@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping
 import os
@@ -21,6 +21,7 @@ class Settings:
     port: int = 8765
     tool_groups: tuple[str, ...] = ()
     storage_root: Path = Path("data/projects")
+    auth_token: str | None = field(default=None, repr=False)
 
 
 _ALLOWED_KEYS = {
@@ -106,6 +107,10 @@ def load_settings(
     transport = str(value("GHIDRA_MCP_TRANSPORT", server, "transport", "stdio"))
     if transport not in {"stdio", "streamable-http"}:
         raise ConfigurationError("server.transport 必须是 stdio 或 streamable-http")
+    auth_token = environment.get("GHIDRA_MCP_AUTH_TOKEN", dotenv.get("GHIDRA_MCP_AUTH_TOKEN", ""))
+    auth_token = auth_token.strip() or None
+    if transport == "streamable-http" and auth_token is None:
+        raise ConfigurationError("streamable-http 必须设置 GHIDRA_MCP_AUTH_TOKEN")
     install_value = value("GHIDRA_INSTALL_DIR", ghidra, "install_dir", "")
     install_dir = Path(str(install_value)).resolve() if install_value else None
     port = _integer(value("GHIDRA_MCP_PORT", server, "port", 8765), key="server.port")
@@ -119,4 +124,5 @@ def load_settings(
         port=port,
         tool_groups=groups,
         storage_root=Path(str(value("GHIDRA_MCP_STORAGE_ROOT", storage, "root", "data/projects"))),
+        auth_token=auth_token,
     )

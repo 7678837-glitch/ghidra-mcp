@@ -41,6 +41,7 @@ def test_runtime_path_and_transport_are_validated_at_configuration_boundary(tmp_
         environ={
             "GHIDRA_INSTALL_DIR": str(install_dir),
             "GHIDRA_MCP_TRANSPORT": "streamable-http",
+            "GHIDRA_MCP_AUTH_TOKEN": "test-token",
         },
     )
     assert settings.install_dir == install_dir.resolve()
@@ -52,3 +53,30 @@ def test_runtime_path_and_transport_are_validated_at_configuration_boundary(tmp_
             dotenv_path=None,
             environ={"GHIDRA_MCP_TRANSPORT": "websocket"},
         )
+
+
+def test_streamable_http_requires_non_empty_environment_auth_token() -> None:
+    from ghidra_mcp.config import ConfigurationError, load_settings
+
+    with pytest.raises(ConfigurationError, match="GHIDRA_MCP_AUTH_TOKEN"):
+        load_settings(
+            config_path=None,
+            dotenv_path=None,
+            environ={"GHIDRA_MCP_TRANSPORT": "streamable-http"},
+        )
+
+
+def test_auth_token_is_loaded_from_dotenv_but_never_exposed_by_repr(tmp_path: Path) -> None:
+    from ghidra_mcp.config import load_settings
+
+    dotenv = tmp_path / ".env"
+    dotenv.write_text("GHIDRA_MCP_AUTH_TOKEN=private-test-token\n", encoding="utf-8")
+
+    settings = load_settings(
+        config_path=None,
+        dotenv_path=dotenv,
+        environ={"GHIDRA_MCP_TRANSPORT": "streamable-http"},
+    )
+
+    assert settings.auth_token == "private-test-token"
+    assert "private-test-token" not in repr(settings)

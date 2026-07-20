@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from starlette.testclient import TestClient
 
 from ghidra_mcp.registry import ToolDefinition, ToolRegistry
 
@@ -31,6 +32,51 @@ def test_mcp_app_exposes_registry_tools_without_schema_relay() -> None:
     assert [tool.name for tool in tools] == ["echo"]
     assert tools[0].description == DESCRIPTION
     assert tools[0].inputSchema["properties"]["text"]["type"] == "string"
+
+
+def test_http_health_is_public_and_mcp_requires_the_configured_bearer_token() -> None:
+    from ghidra_mcp.server import create_mcp_app
+
+    registry = ToolRegistry()
+
+    def echo(text: str) -> str:
+        return text
+
+    registry.register(ToolDefinition("echo", DESCRIPTION, echo))
+    app = create_mcp_app(
+        registry,
+        host="127.0.0.1",
+        port=8765,
+        auth_token="private-test-token",
+        version="20260720.1",
+        git_commit="abc123def456",
+    )
+
+    with TestClient(app.streamable_http_app()) as client:
+        health = client.get("/health")
+        missing = client.post("/mcp", json={})
+        wrong = client.post(
+            "/mcp",
+            headers={"Authorization": "Bearer wrong-token"},
+            json={},
+        )
+        accepted = client.post(
+            "/mcp",
+            headers={"Authorization": "Bearer private-test-token"},
+            json={},
+        )
+
+    assert health.status_code == 200
+    assert health.json() == {
+        "status": "ok",
+        "version": "20260720.1",
+        "git_commit": "abc123def456",
+        "schema_version": health.json()["schema_version"],
+    }
+    assert len(health.json()["schema_version"]) == 16
+    assert missing.status_code == 401
+    assert wrong.status_code == 401
+    assert accepted.status_code != 401
 
 
 class FakePyGhidra:

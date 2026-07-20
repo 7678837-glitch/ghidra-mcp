@@ -30,5 +30,10 @@ def create_service(settings: Settings, *, pyghidra_module: Any | None = None) ->
     runtime = GhidraRuntime(settings.install_dir, pyghidra_module=pyghidra_module)
     workspace = ProgramWorkspace(runtime, project_location=settings.storage_root)
     registry = build_default_registry(workspace)
-    app = create_mcp_app(registry, host=settings.host, port=settings.port)
+    app = create_mcp_app(
+        registry,
+        host=settings.host,
+        port=settings.port,
+        auth_token=settings.auth_token if settings.transport == "streamable-http" else None,
+    )
     return MCPService(settings=settings, app=app, workspace=workspace)
