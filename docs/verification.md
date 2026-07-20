@@ -10,7 +10,7 @@
 |---|---|---|
 | `libsymbolic.so` | 符号与 DWARF 调试信息 | `f87e3005d28ad1751b90b088eaa6f3f73c788fe1f3f605cbc9a210726febdc96` |
 | `libstripped.so` | `-O2 -s`，移除普通符号和调试信息 | `f7f4ef287303b0de81bb0e43723f8bf654d3261e9f1b4c5237f94bd71585c590` |
-| `libcontrol_flow.so` | 状态机、opaque predicate、间接状态转换 | `931d368f213ea96d4a79dabdc9cd69560152684134e838d73e2b85ca2bdafde3` |
+| `libcontrol_flow.so` | 运行态状态循环、循环回边与函数指针间接调用 | `51e50c32193c666dc2ace38935477cd88eea901ab77fc1dfdcd602647677888a` |
 
 ## Ghidra 版本矩阵
 

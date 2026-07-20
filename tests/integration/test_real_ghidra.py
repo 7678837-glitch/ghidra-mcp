@@ -46,7 +46,8 @@ def test_real_elf_shared_libraries_cover_read_decompile_write_and_reopen(tmp_pat
         target = next(function for function in functions if function["name"] == expected_name)
         entry = target["entry_point"]
         assert tools["function_get"](program_id, entry)["entry_point"] == entry
-        assert tools["instructions_list"](program_id, address=entry, limit=20)
+        instructions = tools["instructions_list"](program_id, address=entry, limit=200)
+        assert instructions
         tools["symbols_list"](program_id, contains=expected_name, limit=20)
         tools["references_list"](program_id, entry, direction="both", limit=20)
         tools["strings_list"](program_id, limit=20)
@@ -54,6 +55,17 @@ def test_real_elf_shared_libraries_cover_read_decompile_write_and_reopen(tmp_pat
         tools["call_graph"](program_id, entry)
         graph = tools["control_flow_graph"](program_id, entry)
         assert graph["nodes"]
+        if expected_name == "fixture_control_flow":
+            assert any(
+                int(edge["to"], 16) < int(edge["from"], 16)
+                for edge in graph["edges"]
+                if edge["kind"] == "flow"
+            ), "控制流夹具必须保留循环回边"
+            assert any(
+                instruction["mnemonic"].upper() == "CALL"
+                and any("[" in operand for operand in instruction["operands"])
+                for instruction in instructions
+            ), "控制流夹具必须保留间接调用"
         data = tools["data_list"](program_id, limit=20)
         if data:
             assert tools["data_get"](program_id, data[0]["address"])["address"] == data[0]["address"]
@@ -66,19 +78,46 @@ def test_real_elf_shared_libraries_cover_read_decompile_write_and_reopen(tmp_pat
         tools["bookmarks_list"](program_id, limit=20)
         assert tools["analysis_run"](program_id)["functions_after"] >= 1
 
-        if expected_name == "fixture_symbolic":
-            tools["function_rename"](program_id, entry, "verified_symbolic")
-            tools["comment_set"](program_id, entry, "eol", "verified by integration test")
-            assert any(item["address"] == entry for item in tools["comments_list"](program_id))
-            tools["function_tag_update"](program_id, entry, "add", "reviewed")
-            assert tools["function_tags"](program_id, entry)[0]["name"] == "reviewed"
-            tools["bookmark_set"](program_id, entry, "Analysis", "Review", "inspect")
-            assert any(item["address"] == entry for item in tools["bookmarks_list"](program_id))
+        suffix = sample.stem.removeprefix("lib")
+        tools["function_rename"](program_id, entry, f"renamed_{suffix}")
+        tools["symbol_rename"](program_id, entry, f"symbol_{suffix}")
+        tools["function_delete"](program_id, entry)
+        tools["function_create"](program_id, entry, f"verified_{suffix}")
+        tools["comment_set"](program_id, entry, "eol", f"verified {suffix}")
+        tools["function_tag_update"](program_id, entry, "add", f"reviewed_{suffix}")
+        tools["bookmark_set"](program_id, entry, "Analysis", "Review", f"inspect {suffix}")
+
+        current_program = workspace.get(program_id).getCurrentProgram()
+        undefined = current_program.getListing().getFirstUndefinedData(
+            current_program.getMemory(), workspace.runtime.pyghidra.task_monitor()
+        )
+        assert undefined is not None
+        undefined_address = str(undefined.getAddress())
+        byte_type = next(
+            item
+            for item in tools["data_types_list"](program_id, contains="byte", limit=100)
+            if item["length"] == 1
+        )
+        tools["data_type_apply"](program_id, undefined_address, byte_type["path"])
+
         tools["program_close"](program_id)
 
-        if expected_name == "fixture_symbolic":
-            reopened = tools["program_open"](str(sample), analyze=False)
-            assert tools["function_get"](reopened["program_id"], entry)["name"] == "verified_symbolic"
-            tools["program_close"](reopened["program_id"])
+        reopened = tools["program_open"](str(sample), analyze=False)
+        reopened_id = reopened["program_id"]
+        assert tools["function_get"](reopened_id, entry)["name"] == f"verified_{suffix}"
+        assert any(
+            item["address"] == entry and item["text"] == f"verified {suffix}"
+            for item in tools["comments_list"](reopened_id)
+        )
+        assert any(
+            item["name"] == f"reviewed_{suffix}"
+            for item in tools["function_tags"](reopened_id, entry)
+        )
+        assert any(
+            item["address"] == entry and item["comment"] == f"inspect {suffix}"
+            for item in tools["bookmarks_list"](reopened_id)
+        )
+        assert tools["data_get"](reopened_id, undefined_address)["address"] == undefined_address
+        tools["program_close"](reopened_id)
 
     workspace.close_all()

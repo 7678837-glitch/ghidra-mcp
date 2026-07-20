@@ -4,7 +4,7 @@
 
 - `libsymbolic.so`：保留符号与 DWARF 调试信息。
 - `libstripped.so`：优化并移除普通符号和调试信息，仅保留导出符号。
-- `libcontrol_flow.so`：用状态机、opaque predicate 和间接状态转换制造控制流复杂度。
+- `libcontrol_flow.so`：用运行态状态循环和函数指针分派制造控制流平坦化风格的间接控制流。
 
 构建：
 
@@ -17,7 +17,7 @@ python scripts/build_fixtures.py
 ```text
 f87e3005d28ad1751b90b088eaa6f3f73c788fe1f3f605cbc9a210726febdc96  libsymbolic.so
 f7f4ef287303b0de81bb0e43723f8bf654d3261e9f1b4c5237f94bd71585c590  libstripped.so
-931d368f213ea96d4a79dabdc9cd69560152684134e838d73e2b85ca2bdafde3  libcontrol_flow.so
+51e50c32193c666dc2ace38935477cd88eea901ab77fc1dfdcd602647677888a  libcontrol_flow.so
 ```
 
 真实 Ghidra 测试：
