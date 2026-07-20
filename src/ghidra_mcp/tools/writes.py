@@ -47,9 +47,10 @@ def register_write_tools(registry: ToolRegistry, workspace: ProgramWorkspace) ->
         program = api.getCurrentProgram()
         old_name = str(function.getName())
         new_name = _name(name)
-        with program_transaction(program, "Rename function"):
+        with program_transaction(
+            program, "Rename function", persist=lambda: workspace.save(program_id)
+        ):
             function.setName(new_name, _user_defined_source())
-        workspace.save(program_id)
         return {
             "entry_point": str(function.getEntryPoint()),
             "old_name": old_name,
@@ -65,9 +66,10 @@ def register_write_tools(registry: ToolRegistry, workspace: ProgramWorkspace) ->
             raise ToolInputError(f"地址没有主符号：{address}")
         old_name = str(symbol.getName())
         new_name = _name(name)
-        with program_transaction(program, "Rename symbol"):
+        with program_transaction(
+            program, "Rename symbol", persist=lambda: workspace.save(program_id)
+        ):
             symbol.setName(new_name, _user_defined_source())
-        workspace.save(program_id)
         return {
             "address": str(symbol.getAddress()),
             "old_name": old_name,
@@ -82,9 +84,10 @@ def register_write_tools(registry: ToolRegistry, workspace: ProgramWorkspace) ->
         program = api.getCurrentProgram()
         normalized_kind = kind.lower()
         comment_type = _comment_type(normalized_kind)
-        with program_transaction(program, "Set comment"):
+        with program_transaction(
+            program, "Set comment", persist=lambda: workspace.save(program_id)
+        ):
             program.getListing().setComment(resolved, comment_type, text)
-        workspace.save(program_id)
         return {"address": str(resolved), "kind": normalized_kind, "text": text}
 
     def function_create(program_id: str, address: str, name: str) -> dict[str, str]:
@@ -94,11 +97,12 @@ def register_write_tools(registry: ToolRegistry, workspace: ProgramWorkspace) ->
             raise ToolInputError(f"地址已有函数：{address}")
         program = api.getCurrentProgram()
         new_name = _name(name)
-        with program_transaction(program, "Create function"):
+        with program_transaction(
+            program, "Create function", persist=lambda: workspace.save(program_id)
+        ):
             function = api.createFunction(resolved, new_name)
             if function is None:
                 raise RuntimeError(f"Ghidra 未能在 {address} 创建函数")
-        workspace.save(program_id)
         return {"name": str(function.getName()), "entry_point": str(function.getEntryPoint())}
 
     def function_delete(program_id: str, address: str) -> dict[str, str]:
@@ -109,9 +113,10 @@ def register_write_tools(registry: ToolRegistry, workspace: ProgramWorkspace) ->
             raise ToolInputError(f"地址不是函数入口：{address}")
         entry_point = str(function.getEntryPoint())
         program = api.getCurrentProgram()
-        with program_transaction(program, "Delete function"):
+        with program_transaction(
+            program, "Delete function", persist=lambda: workspace.save(program_id)
+        ):
             api.removeFunction(function)
-        workspace.save(program_id)
         return {"deleted": entry_point}
 
     definitions = (

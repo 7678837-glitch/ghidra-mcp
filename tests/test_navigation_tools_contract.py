@@ -129,6 +129,23 @@ def test_navigation_tools_return_stable_json_contracts() -> None:
         "length": 3,
         "hex": "ff0041",
     }
+    assert tools["memory_read"](
+        "program-1",
+        "00400000",
+        3,
+        interpret=True,
+        unit_size=2,
+        byte_order="little",
+    ) == {
+        "address": "00400000",
+        "length": 3,
+        "hex": "ff0041",
+        "ascii": "..A",
+        "unit_size": 2,
+        "byte_order": "little",
+        "unsigned_values": [255],
+        "trailing_hex": "41",
+    }
     assert tools["functions_list"]("program-1", offset=1, limit=1) == [
         {
             "name": "worker",
@@ -152,6 +169,10 @@ def test_navigation_tools_reject_invalid_bounds_and_addresses() -> None:
         tools["memory_read"]("program-1", "00400000", 0)
     with pytest.raises(ToolInputError, match="地址"):
         tools["memory_read"]("program-1", "invalid", 3)
+    with pytest.raises(ToolInputError, match="unit_size"):
+        tools["memory_read"]("program-1", "00400000", 3, interpret=True, unit_size=3)
+    with pytest.raises(ToolInputError, match="byte_order"):
+        tools["memory_read"]("program-1", "00400000", 3, interpret=True, byte_order="middle")
     with pytest.raises(ToolInputError, match="limit"):
         tools["functions_list"]("program-1", offset=0, limit=1001)
     with pytest.raises(ToolInputError, match="未包含在函数"):

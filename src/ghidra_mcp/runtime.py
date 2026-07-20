@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+import re
 import sys
 from threading import RLock
 from types import ModuleType
@@ -17,6 +18,26 @@ class WorkspaceError(RuntimeError):
     """程序工作区操作失败。"""
 
 
+_MINIMUM_GHIDRA_VERSION = (12, 1, 2)
+
+
+def _read_ghidra_version(install_dir: Path) -> tuple[int, int, int]:
+    properties = install_dir / "Ghidra" / "application.properties"
+    try:
+        lines = properties.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as error:
+        raise WorkspaceError(f"无法确认 Ghidra 版本：未能读取 {properties}") from error
+    for line in lines:
+        key, separator, value = line.partition("=")
+        if separator and key.strip() == "application.version":
+            match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-._].*)?", value.strip())
+            if match is not None:
+                major, minor, patch = match.groups()
+                return int(major), int(minor), int(patch)
+            break
+    raise WorkspaceError(f"无法确认 Ghidra 版本：{properties} 缺少有效的 application.version")
+
+
 @dataclass(slots=True)
 class _ProgramRecord:
     path: Path
@@ -25,7 +46,9 @@ class _ProgramRecord:
 
 
 class GhidraRuntime:
-    def __init__(self, install_dir: Path, *, pyghidra_module: ModuleType | Any | None = None) -> None:
+    def __init__(
+        self, install_dir: Path, *, pyghidra_module: ModuleType | Any | None = None
+    ) -> None:
         self.install_dir = install_dir.resolve()
         if pyghidra_module is None:
             import pyghidra
@@ -40,6 +63,10 @@ class GhidraRuntime:
             if self._launcher is None:
                 if not self.install_dir.is_dir():
                     raise WorkspaceError(f"Ghidra 安装目录不存在：{self.install_dir}")
+                version = _read_ghidra_version(self.install_dir)
+                if version < _MINIMUM_GHIDRA_VERSION:
+                    detected = ".".join(str(part) for part in version)
+                    raise WorkspaceError(f"Ghidra {detected} 低于安全最低版本 12.1.2")
                 self._launcher = self.pyghidra.start(install_dir=self.install_dir)
             return self._launcher
 
@@ -237,5 +264,13 @@ class ProgramWorkspace:
     def close_all(self) -> None:
         with self._lock:
             program_ids = tuple(self._programs)
+        failures: list[BaseException] = []
         for program_id in program_ids:
-            self.close(program_id)
+            try:
+                self.close(program_id)
+            except BaseException as error:
+                failures.append(error)
+        if len(failures) == 1:
+            raise failures[0]
+        if failures:
+            raise BaseExceptionGroup("关闭多个程序会话失败", failures)

@@ -87,6 +87,7 @@ def register_listing_tools(registry: ToolRegistry, workspace: ProgramWorkspace) 
         api = workspace.get(program_id)
         resolved = _address(api, address)
         manager = api.getCurrentProgram().getReferenceManager()
+
         def references() -> Iterable[dict[str, object]]:
             if direction in {"from", "both"}:
                 for reference in manager.getReferencesFrom(resolved):
@@ -104,9 +105,7 @@ def register_listing_tools(registry: ToolRegistry, workspace: ProgramWorkspace) 
         values = (data for data in listing.getDefinedData(True) if data.hasStringValue())
         if contains is not None:
             values = (
-                data
-                for data in values
-                if contains in str(data.getDefaultValueRepresentation())
+                data for data in values if contains in str(data.getDefaultValueRepresentation())
             )
         return [
             {

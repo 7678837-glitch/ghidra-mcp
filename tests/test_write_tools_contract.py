@@ -10,6 +10,7 @@ class FakeProgram:
         self.events: list[tuple[object, ...]] = []
         self.listing = FakeListing(self)
         self.symbol_table = FakeSymbolTable(self)
+        self.undo_name: str | None = None
 
     def startTransaction(self, description: str) -> int:
         self.events.append(("start", description))
@@ -17,6 +18,18 @@ class FakeProgram:
 
     def endTransaction(self, transaction_id: int, commit: bool) -> None:
         self.events.append(("end", transaction_id, commit))
+        if commit:
+            self.undo_name = str(self.events[transaction_id - 1][1])
+
+    def canUndo(self) -> bool:
+        return self.undo_name is not None
+
+    def getUndoName(self) -> str:
+        return self.undo_name or ""
+
+    def undo(self) -> None:
+        self.events.append(("undo", self.undo_name))
+        self.undo_name = None
 
     def getListing(self) -> "FakeListing":
         return self.listing
@@ -103,9 +116,10 @@ class FakeAPI:
 
 
 class FakeWorkspace:
-    def __init__(self, *, fail_rename: bool = False) -> None:
+    def __init__(self, *, fail_rename: bool = False, fail_save: bool = False) -> None:
         self.api = FakeAPI(fail_rename=fail_rename)
         self.saved: list[str] = []
+        self.fail_save = fail_save
 
     def get(self, program_id: str) -> FakeAPI:
         assert program_id == "program-1"
@@ -113,6 +127,8 @@ class FakeWorkspace:
 
     def save(self, program_id: str) -> None:
         self.saved.append(program_id)
+        if self.fail_save:
+            raise RuntimeError("disk unavailable")
 
 
 def _tools(workspace: FakeWorkspace, monkeypatch: pytest.MonkeyPatch):
@@ -147,9 +163,7 @@ def test_write_tools_commit_successful_transactions(monkeypatch: pytest.MonkeyPa
         "name": "created",
         "entry_point": "00400030",
     }
-    assert tools["function_delete"]("program-1", "00400010") == {
-        "deleted": "00400010"
-    }
+    assert tools["function_delete"]("program-1", "00400010") == {"deleted": "00400010"}
     ends = [event for event in workspace.api.program.events if event[0] == "end"]
     assert len(ends) == 5
     assert all(event[2] is True for event in ends)
@@ -166,3 +180,14 @@ def test_write_tool_rolls_back_when_mutation_fails(monkeypatch: pytest.MonkeyPat
     assert workspace.api.program.events[-1][0] == "end"
     assert workspace.api.program.events[-1][2] is False
     assert workspace.saved == []
+
+
+def test_write_tool_rolls_back_when_persistence_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    workspace = FakeWorkspace(fail_save=True)
+    tools = _tools(workspace, monkeypatch)
+
+    with pytest.raises(RuntimeError, match="disk unavailable"):
+        tools["function_rename"]("program-1", "00400010", "worker")
+
+    assert workspace.api.program.events[-1] == ("undo", "Rename function")
+    assert workspace.saved == ["program-1"]

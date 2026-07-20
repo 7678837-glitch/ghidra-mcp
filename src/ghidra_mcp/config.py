@@ -84,13 +84,11 @@ def load_settings(
     server = document.get("server", {})
     ghidra = document.get("ghidra", {})
     storage = document.get("storage", {})
-    assert (
-        isinstance(server, dict)
-        and isinstance(ghidra, dict)
-        and isinstance(storage, dict)
-    )
+    assert isinstance(server, dict) and isinstance(ghidra, dict) and isinstance(storage, dict)
 
-    def value(env_key: str, toml_values: dict[str, object], toml_key: str, default: object) -> object:
+    def value(
+        env_key: str, toml_values: dict[str, object], toml_key: str, default: object
+    ) -> object:
         return environment.get(env_key, dotenv.get(env_key, toml_values.get(toml_key, default)))
 
     transport = str(value("GHIDRA_MCP_TRANSPORT", server, "transport", "stdio"))

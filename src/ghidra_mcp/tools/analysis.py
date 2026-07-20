@@ -33,12 +33,12 @@ def register_analysis_tools(registry: ToolRegistry, workspace: ProgramWorkspace)
         program_id: str,
         address: str,
         timeout_seconds: int = 30,
-        max_chars: int = 1_000_000,
+        max_chars: int = 50_000,
     ) -> dict[str, str | bool]:
         if not 1 <= timeout_seconds <= 300:
             raise ToolInputError("timeout_seconds 必须在 1 到 300 之间")
-        if not 1 <= max_chars <= 2_000_000:
-            raise ToolInputError("max_chars 必须在 1 到 2000000 之间")
+        if not 1 <= max_chars <= 200_000:
+            raise ToolInputError("max_chars 必须在 1 到 200000 之间")
         api = workspace.get(program_id)
         program = api.getCurrentProgram()
         function = _function(api, address)

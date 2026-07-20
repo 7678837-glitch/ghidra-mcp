@@ -2,7 +2,7 @@
 
 面向 headless 逆向分析的单进程 MCP 服务。Python 进程通过 PyGhidra 启动 JVM、管理持久化 Ghidra 项目，并向 AI 客户端暴露 34 个任务导向工具。
 
-> 支持基线是 Ghidra 12.0+，不是所有历史版本。Streamable HTTP 必须配置 Bearer token；跨主机部署还必须在服务前终止 TLS。
+> 安全支持基线是 Ghidra 12.1.2+，不是所有历史版本。Streamable HTTP 必须配置 Bearer token；跨主机部署还必须在服务前终止 TLS。
 
 ## 使用 Docker 启动
 
@@ -34,7 +34,7 @@ docker run --name ghidra-mcp \
 
 ## 本地 stdio 启动
 
-前置条件：Python 3.11+、Ghidra 12.0+，以及可写的项目数据目录。
+前置条件：Python 3.11+、Ghidra 12.1.2+，以及可写的项目数据目录。
 
 ```bash
 uv sync --locked

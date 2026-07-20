@@ -18,6 +18,12 @@ DESCRIPTION = """回显输入文本。
 """
 
 
+def write_ghidra_version(install_dir: Path, version: str = "12.1.2") -> None:
+    properties = install_dir / "Ghidra" / "application.properties"
+    properties.parent.mkdir(parents=True, exist_ok=True)
+    properties.write_text(f"application.version={version}\n", encoding="utf-8")
+
+
 def test_mcp_app_exposes_registry_tools_without_schema_relay() -> None:
     from ghidra_mcp.server import create_mcp_app
 
@@ -79,6 +85,17 @@ def test_http_health_is_public_and_mcp_requires_the_configured_bearer_token() ->
     assert missing.status_code == 401
     assert wrong.status_code == 401
     assert accepted.status_code != 401
+
+
+def test_runtime_version_ignores_unrelated_working_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ghidra_mcp.server import _runtime_version
+
+    (tmp_path / "VERSION").write_text("unrelated-project-version\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert _runtime_version() == "20260720.1"
 
 
 def test_token_verifier_rejects_unicode_without_raising() -> None:
@@ -172,6 +189,7 @@ def test_workspace_starts_jvm_once_and_owns_program_lifecycle(tmp_path: Path) ->
 
     install_dir = tmp_path / "ghidra"
     install_dir.mkdir()
+    write_ghidra_version(install_dir)
     binary = tmp_path / "sample.bin"
     binary.write_bytes(b"sample")
     fake = FakePyGhidra()
@@ -189,6 +207,35 @@ def test_workspace_starts_jvm_once_and_owns_program_lifecycle(tmp_path: Path) ->
     assert fake.closed == [binary.resolve()]
     workspace.close_all()
     assert fake.closed == [binary.resolve(), binary.resolve()]
+
+
+@pytest.mark.parametrize("version", ["12.0.4", "12.1.0", "12.1.1"])
+def test_runtime_rejects_ghidra_versions_with_known_reachable_vulnerabilities(
+    tmp_path: Path, version: str
+) -> None:
+    from ghidra_mcp.runtime import GhidraRuntime, WorkspaceError
+
+    install_dir = tmp_path / "ghidra"
+    write_ghidra_version(install_dir, version)
+    fake = FakePyGhidra()
+
+    with pytest.raises(WorkspaceError, match=r"12\.1\.2"):
+        GhidraRuntime(install_dir, pyghidra_module=fake).ensure_started()
+
+    assert fake.start_calls == []
+
+
+def test_runtime_rejects_installations_without_a_readable_version(tmp_path: Path) -> None:
+    from ghidra_mcp.runtime import GhidraRuntime, WorkspaceError
+
+    install_dir = tmp_path / "ghidra"
+    install_dir.mkdir()
+    fake = FakePyGhidra()
+
+    with pytest.raises(WorkspaceError, match="无法确认 Ghidra 版本"):
+        GhidraRuntime(install_dir, pyghidra_module=fake).ensure_started()
+
+    assert fake.start_calls == []
 
 
 def test_workspace_rejects_missing_binary_before_starting_jvm(tmp_path: Path) -> None:
@@ -210,6 +257,7 @@ def test_workspace_uses_configured_persistent_project_root(tmp_path: Path) -> No
 
     install_dir = tmp_path / "ghidra"
     install_dir.mkdir()
+    write_ghidra_version(install_dir)
     binary = tmp_path / "sample.bin"
     binary.write_bytes(b"sample")
     project_root = tmp_path / "projects"
@@ -230,6 +278,7 @@ def test_workspace_saves_completed_analysis_before_open_returns(tmp_path: Path) 
 
     install_dir = tmp_path / "ghidra"
     install_dir.mkdir()
+    write_ghidra_version(install_dir)
     binary = tmp_path / "sample.bin"
     binary.write_bytes(b"sample")
     fake = FakePyGhidra()
@@ -269,6 +318,7 @@ def test_workspace_project_identity_uses_canonical_path_and_content(tmp_path: Pa
 
     install_dir = tmp_path / "ghidra"
     install_dir.mkdir()
+    write_ghidra_version(install_dir)
     first_dir = tmp_path / "first"
     second_dir = tmp_path / "second"
     first_dir.mkdir()
@@ -322,6 +372,7 @@ def test_workspace_close_removes_saved_session_when_context_exit_fails(tmp_path:
 
     install_dir = tmp_path / "ghidra"
     install_dir.mkdir()
+    write_ghidra_version(install_dir)
     binary = tmp_path / "sample.bin"
     binary.write_bytes(b"sample")
     workspace = ProgramWorkspace(
@@ -363,6 +414,7 @@ def test_workspace_save_failure_keeps_session_available_for_retry(tmp_path: Path
 
     install_dir = tmp_path / "ghidra"
     install_dir.mkdir()
+    write_ghidra_version(install_dir)
     binary = tmp_path / "sample.bin"
     binary.write_bytes(b"sample")
     workspace = ProgramWorkspace(
@@ -376,6 +428,29 @@ def test_workspace_save_failure_keeps_session_available_for_retry(tmp_path: Path
     assert workspace.get(program_id)["binary"] == binary.resolve()
     workspace.save(program_id)
     workspace.close(program_id)
+
+
+def test_workspace_close_all_attempts_every_session_after_one_fails() -> None:
+    from threading import RLock
+
+    from ghidra_mcp.runtime import ProgramWorkspace
+
+    workspace = object.__new__(ProgramWorkspace)
+    workspace._lock = RLock()
+    workspace._programs = {"first": object(), "second": object(), "third": object()}
+    closed: list[str] = []
+
+    def close(program_id: str) -> None:
+        closed.append(program_id)
+        if program_id == "first":
+            raise RuntimeError("first close failed")
+
+    workspace.close = close  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="first close failed"):
+        workspace.close_all()
+
+    assert closed == ["first", "second", "third"]
 
 
 def test_existing_program_file_error_after_enter_never_falls_back_to_import(

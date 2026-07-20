@@ -29,9 +29,7 @@ def test_container_mcp_analyzes_and_persists_real_elf() -> None:
 
     expected_name = os.environ.get("GHIDRA_MCP_CONTAINER_EXPECT_NAME", "fixture_symbolic")
     rename_to = os.environ.get("GHIDRA_MCP_CONTAINER_RENAME_TO")
-    binary_path = os.environ.get(
-        "GHIDRA_MCP_CONTAINER_FIXTURE", "/data/input/libsymbolic.so"
-    )
+    binary_path = os.environ.get("GHIDRA_MCP_CONTAINER_FIXTURE", "/data/input/libsymbolic.so")
 
     async def exercise() -> None:
         async with httpx.AsyncClient(

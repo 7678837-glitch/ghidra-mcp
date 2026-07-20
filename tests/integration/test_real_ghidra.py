@@ -11,7 +11,9 @@ FIXTURES = Path(__file__).parents[1] / "fixtures" / "generated"
 
 
 @pytest.mark.integration
-def test_real_elf_shared_libraries_cover_read_decompile_write_and_reopen(tmp_path: Path) -> None:
+def test_real_elf_shared_libraries_cover_read_decompile_write_and_reopen(
+    tmp_path: Path,
+) -> None:
     install_value = os.environ.get("GHIDRA_INSTALL_DIR")
     if not install_value:
         pytest.skip("GHIDRA_INSTALL_DIR 未配置")
@@ -68,7 +70,9 @@ def test_real_elf_shared_libraries_cover_read_decompile_write_and_reopen(tmp_pat
             ), "控制流夹具必须保留间接调用"
         data = tools["data_list"](program_id, limit=20)
         if data:
-            assert tools["data_get"](program_id, data[0]["address"])["address"] == data[0]["address"]
+            assert (
+                tools["data_get"](program_id, data[0]["address"])["address"] == data[0]["address"]
+            )
         tools["variables_list"](program_id, entry)
         assert tools["pcode_list"](program_id, entry, limit=20)
         assert tools["data_types_list"](program_id, limit=20)
@@ -79,6 +83,17 @@ def test_real_elf_shared_libraries_cover_read_decompile_write_and_reopen(tmp_pat
         assert tools["analysis_run"](program_id)["functions_after"] >= 1
 
         suffix = sample.stem.removeprefix("lib")
+        if sample == samples[0][0]:
+            real_save = workspace.save
+
+            def fail_save(_program_id: str) -> None:
+                raise RuntimeError("simulated persistence failure")
+
+            workspace.save = fail_save  # type: ignore[method-assign]
+            with pytest.raises(RuntimeError, match="simulated persistence failure"):
+                tools["function_rename"](program_id, entry, "must_be_rolled_back")
+            assert tools["function_get"](program_id, entry)["name"] == expected_name
+            workspace.save = real_save  # type: ignore[method-assign]
         tools["function_rename"](program_id, entry, f"renamed_{suffix}")
         tools["symbol_rename"](program_id, entry, f"symbol_{suffix}")
         tools["function_delete"](program_id, entry)

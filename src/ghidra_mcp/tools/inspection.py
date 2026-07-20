@@ -72,9 +72,7 @@ def register_inspection_tools(registry: ToolRegistry, workspace: ProgramWorkspac
             raise ToolInputError(f"地址没有已定义数据：{address}")
         return _data_json(data)
 
-    def comments_list(
-        program_id: str, offset: int = 0, limit: int = 100
-    ) -> list[dict[str, str]]:
+    def comments_list(program_id: str, offset: int = 0, limit: int = 100) -> list[dict[str, str]]:
         api = workspace.get(program_id)
         program = api.getCurrentProgram()
         listing = program.getListing()
@@ -107,16 +105,23 @@ def register_inspection_tools(registry: ToolRegistry, workspace: ProgramWorkspac
             raise ToolInputError("limit 必须在 1 到 10000 之间")
         api = workspace.get(program_id)
         function = _function(api, address)
-        instructions = api.getCurrentProgram().getListing().getInstructions(function.getBody(), True)
+        instructions = (
+            api.getCurrentProgram().getListing().getInstructions(function.getBody(), True)
+        )
         return [
-            {"address": str(instruction.getAddress()), "ops": [str(op) for op in instruction.getPcode()]}
+            {
+                "address": str(instruction.getAddress()),
+                "ops": [str(op) for op in instruction.getPcode()],
+            }
             for instruction in islice(instructions, limit)
         ]
 
     def data_types_list(
         program_id: str, contains: str | None = None, offset: int = 0, limit: int = 100
     ) -> list[dict[str, object]]:
-        values = workspace.get(program_id).getCurrentProgram().getDataTypeManager().getAllDataTypes()
+        values = (
+            workspace.get(program_id).getCurrentProgram().getDataTypeManager().getAllDataTypes()
+        )
         if contains is not None:
             needle = contains.casefold()
             values = (item for item in values if needle in str(item.getPathName()).casefold())
@@ -135,10 +140,13 @@ def register_inspection_tools(registry: ToolRegistry, workspace: ProgramWorkspac
         tags = sorted(_function(api, address).getTags(), key=lambda item: str(item.getName()))
         return [{"name": str(tag.getName()), "comment": str(tag.getComment())} for tag in tags]
 
-    def bookmarks_list(
-        program_id: str, offset: int = 0, limit: int = 100
-    ) -> list[dict[str, str]]:
-        values = workspace.get(program_id).getCurrentProgram().getBookmarkManager().getBookmarksIterator()
+    def bookmarks_list(program_id: str, offset: int = 0, limit: int = 100) -> list[dict[str, str]]:
+        values = (
+            workspace.get(program_id)
+            .getCurrentProgram()
+            .getBookmarkManager()
+            .getBookmarksIterator()
+        )
         return [
             {
                 "address": str(item.getAddress()),
@@ -150,14 +158,46 @@ def register_inspection_tools(registry: ToolRegistry, workspace: ProgramWorkspac
         ]
 
     definitions = (
-        ToolDefinition("data_list", """分页列出已定义数据并可按类型过滤。\n\n输入输出与副作用：输入程序会话、可选类型片段和分页参数；返回地址、长度、类型和值；只读。\n\n何时使用：浏览结构化数据定义时调用；只看字符串用 strings_list，读取原始字节用 memory_read。\n""", data_list),
-        ToolDefinition("data_get", """读取包含指定地址的已定义数据。\n\n输入输出与副作用：输入程序会话和地址；返回数据起点、长度、类型和值；只读。\n\n何时使用：已知数据内地址并需完整定义时调用；批量浏览时改用 data_list。\n""", data_get),
-        ToolDefinition("comments_list", """分页列出程序中的全部标准注释。\n\n输入输出与副作用：输入程序会话和分页参数；返回地址、注释类型与文本；只读。\n\n何时使用：恢复既有分析笔记时调用；新增或删除注释用 comment_set。\n""", comments_list),
-        ToolDefinition("variables_list", """列出函数参数与局部变量。\n\n输入输出与副作用：输入程序会话和函数内地址；返回名称、类型、存储、角色与注释；只读。\n\n何时使用：检查函数原型和局部状态时调用；函数级身份信息用 function_get。\n""", variables_list),
-        ToolDefinition("pcode_list", """读取函数指令对应的 Ghidra P-code。\n\n输入输出与副作用：输入程序会话、函数内地址和指令上限；返回每条指令地址及 P-code 操作；只读。\n\n何时使用：做架构无关语义分析时调用；高层 C 文本用 decompile_function，机器指令用 instructions_list。\n""", pcode_list),
-        ToolDefinition("data_types_list", """分页列出程序数据类型并可按路径过滤。\n\n输入输出与副作用：输入程序会话、可选路径片段和分页参数；返回名称、路径、长度与说明；只读。\n\n何时使用：查找可应用的现有类型时调用；查看某地址当前数据定义用 data_get。\n""", data_types_list),
-        ToolDefinition("function_tags", """列出指定函数已分配的标签。\n\n输入输出与副作用：输入程序会话和函数内地址；返回标签名称与说明；只读。\n\n何时使用：读取函数分类状态时调用；名称语义本身用 function_get。\n""", function_tags),
-        ToolDefinition("bookmarks_list", """分页列出程序书签。\n\n输入输出与副作用：输入程序会话和分页参数；返回地址、类型、分类与说明；只读。\n\n何时使用：浏览人工标记的待办和关注点时调用；程序注释应使用 comments_list。\n""", bookmarks_list),
+        ToolDefinition(
+            "data_list",
+            """分页列出已定义数据并可按类型过滤。\n\n输入输出与副作用：输入程序会话、可选类型片段和分页参数；返回地址、长度、类型和值；只读。\n\n何时使用：浏览结构化数据定义时调用；只看字符串用 strings_list，读取原始字节用 memory_read。\n""",
+            data_list,
+        ),
+        ToolDefinition(
+            "data_get",
+            """读取包含指定地址的已定义数据。\n\n输入输出与副作用：输入程序会话和地址；返回数据起点、长度、类型和值；只读。\n\n何时使用：已知数据内地址并需完整定义时调用；批量浏览时改用 data_list。\n""",
+            data_get,
+        ),
+        ToolDefinition(
+            "comments_list",
+            """分页列出程序中的全部标准注释。\n\n输入输出与副作用：输入程序会话和分页参数；返回地址、注释类型与文本；只读。\n\n何时使用：恢复既有分析笔记时调用；新增或删除注释用 comment_set。\n""",
+            comments_list,
+        ),
+        ToolDefinition(
+            "variables_list",
+            """列出函数参数与局部变量。\n\n输入输出与副作用：输入程序会话和函数内地址；返回名称、类型、存储、角色与注释；只读。\n\n何时使用：检查函数原型和局部状态时调用；函数级身份信息用 function_get。\n""",
+            variables_list,
+        ),
+        ToolDefinition(
+            "pcode_list",
+            """读取函数指令对应的 Ghidra P-code。\n\n输入输出与副作用：输入程序会话、函数内地址和指令上限；返回每条指令地址及 P-code 操作；只读。\n\n何时使用：做架构无关语义分析时调用；高层 C 文本用 decompile_function，机器指令用 instructions_list。\n""",
+            pcode_list,
+        ),
+        ToolDefinition(
+            "data_types_list",
+            """分页列出程序数据类型并可按路径过滤。\n\n输入输出与副作用：输入程序会话、可选路径片段和分页参数；返回名称、路径、长度与说明；只读。\n\n何时使用：查找可应用的现有类型时调用；查看某地址当前数据定义用 data_get。\n""",
+            data_types_list,
+        ),
+        ToolDefinition(
+            "function_tags",
+            """列出指定函数已分配的标签。\n\n输入输出与副作用：输入程序会话和函数内地址；返回标签名称与说明；只读。\n\n何时使用：读取函数分类状态时调用；名称语义本身用 function_get。\n""",
+            function_tags,
+        ),
+        ToolDefinition(
+            "bookmarks_list",
+            """分页列出程序书签。\n\n输入输出与副作用：输入程序会话和分页参数；返回地址、类型、分类与说明；只读。\n\n何时使用：浏览人工标记的待办和关注点时调用；程序注释应使用 comments_list。\n""",
+            bookmarks_list,
+        ),
     )
     for definition in definitions:
         registry.register(definition)

@@ -54,7 +54,10 @@ def register_operation_tools(registry: ToolRegistry, workspace: ProgramWorkspace
             size = int(block.getSize())
             while offset < size and scanned < scan_limit:
                 length = min(chunk_size, size - offset, scan_limit - scanned)
-                raw = bytes((int(item) & 0xFF) for item in api.getBytes(block.getStart().add(offset), length))
+                raw = bytes(
+                    (int(item) & 0xFF)
+                    for item in api.getBytes(block.getStart().add(offset), length)
+                )
                 data = carry + raw
                 cursor = 0
                 while (found := data.find(pattern, cursor)) >= 0:
@@ -86,9 +89,10 @@ def register_operation_tools(registry: ToolRegistry, workspace: ProgramWorkspace
         program = api.getCurrentProgram()
         resolved = _address(api, address)
         value = _data_type(program, path)
-        with program_transaction(program, "Apply data type"):
+        with program_transaction(
+            program, "Apply data type", persist=lambda: workspace.save(program_id)
+        ):
             data = program.getListing().createData(resolved, value)
-        workspace.save(program_id)
         return {
             "address": str(data.getAddress()),
             "length": int(data.getLength()),
@@ -108,14 +112,17 @@ def register_operation_tools(registry: ToolRegistry, workspace: ProgramWorkspace
         if function is None:
             raise ToolInputError(f"地址未包含在函数中：{address}")
         program = api.getCurrentProgram()
-        with program_transaction(program, "Update function tag"):
+        with program_transaction(
+            program, "Update function tag", persist=lambda: workspace.save(program_id)
+        ):
             if action == "add":
                 function.addTag(normalized)
             else:
                 function.removeTag(normalized)
-        workspace.save(program_id)
         tags = sorted(function.getTags(), key=lambda item: str(item.getName()))
-        return {"tags": [{"name": str(tag.getName()), "comment": str(tag.getComment())} for tag in tags]}
+        return {
+            "tags": [{"name": str(tag.getName()), "comment": str(tag.getComment())} for tag in tags]
+        }
 
     def bookmark_set(
         program_id: str, address: str, kind: str, category: str, comment: str | None
@@ -124,23 +131,48 @@ def register_operation_tools(registry: ToolRegistry, workspace: ProgramWorkspace
         program = api.getCurrentProgram()
         resolved = _address(api, address)
         manager = program.getBookmarkManager()
-        with program_transaction(program, "Set bookmark"):
+        with program_transaction(
+            program, "Set bookmark", persist=lambda: workspace.save(program_id)
+        ):
             if comment is None:
                 existing = manager.getBookmark(resolved, kind, category)
                 if existing is not None:
                     manager.removeBookmark(existing)
             else:
                 manager.setBookmark(resolved, kind, category, comment)
-        workspace.save(program_id)
         return {"address": str(resolved), "type": kind, "category": category, "comment": comment}
 
     definitions = (
-        ToolDefinition("memory_search", """在已初始化内存中搜索精确字节模式。\n\n输入输出与副作用：输入程序会话、十六进制模式和结果上限；返回匹配地址，单次最多扫描 64 MiB；只读。\n\n何时使用：按机器码、常量或文件签名定位地址时调用；已知地址读取内容用 memory_read，文本线索用 strings_list。\n""", memory_search),
-        ToolDefinition("analysis_run", """对已打开程序同步运行 Ghidra 自动分析。\n\n输入输出与副作用：输入程序会话；返回分析前后函数数；会更新程序分析数据库。\n\n何时使用：以 analyze=false 打开后补分析或修改定义后重分析；首次打开通常直接让 program_open 执行分析。\n""", analysis_run),
-        ToolDefinition("data_type_get", """按完整路径读取一个数据类型。\n\n输入输出与副作用：输入程序会话和类型路径；返回名称、路径、长度与说明；只读。\n\n何时使用：应用类型前核对精确定义；按片段发现候选类型用 data_types_list。\n""", data_type_get),
-        ToolDefinition("data_type_apply", """在指定地址创建现有数据类型定义。\n\n输入输出与副作用：输入程序会话、地址和完整类型路径；返回创建的数据定义；事务失败自动回滚且不主动清除冲突代码单元。\n\n何时使用：已确认地址与类型且无冲突定义时调用；先发现类型用 data_types_list，查看现有定义用 data_get。\n""", data_type_apply),
-        ToolDefinition("function_tag_update", """精确添加或移除函数标签。\n\n输入输出与副作用：输入程序会话、函数内地址、add/remove 和完整标签名；返回更新后标签；事务失败自动回滚。\n\n何时使用：维护客观函数分类时调用；读取标签用 function_tags，修改函数名用 function_rename。\n""", function_tag_update),
-        ToolDefinition("bookmark_set", """设置或删除指定地址的书签。\n\n输入输出与副作用：输入程序会话、地址、类型、分类和注释；comment 为 null 时删除精确匹配书签；事务失败自动回滚。\n\n何时使用：记录待办或审查锚点时调用；保存分析正文用 comment_set。\n""", bookmark_set),
+        ToolDefinition(
+            "memory_search",
+            """在已初始化内存中搜索精确字节模式。\n\n输入输出与副作用：输入程序会话、十六进制模式和结果上限；返回匹配地址，单次最多扫描 64 MiB；只读。\n\n何时使用：按机器码、常量或文件签名定位地址时调用；已知地址读取内容用 memory_read，文本线索用 strings_list。\n""",
+            memory_search,
+        ),
+        ToolDefinition(
+            "analysis_run",
+            """对已打开程序同步运行 Ghidra 自动分析。\n\n输入输出与副作用：输入程序会话；返回分析前后函数数；会更新程序分析数据库。\n\n何时使用：以 analyze=false 打开后补分析或修改定义后重分析；首次打开通常直接让 program_open 执行分析。\n""",
+            analysis_run,
+        ),
+        ToolDefinition(
+            "data_type_get",
+            """按完整路径读取一个数据类型。\n\n输入输出与副作用：输入程序会话和类型路径；返回名称、路径、长度与说明；只读。\n\n何时使用：应用类型前核对精确定义；按片段发现候选类型用 data_types_list。\n""",
+            data_type_get,
+        ),
+        ToolDefinition(
+            "data_type_apply",
+            """在指定地址创建现有数据类型定义。\n\n输入输出与副作用：输入程序会话、地址和完整类型路径；返回创建的数据定义；事务失败自动回滚且不主动清除冲突代码单元。\n\n何时使用：已确认地址与类型且无冲突定义时调用；先发现类型用 data_types_list，查看现有定义用 data_get。\n""",
+            data_type_apply,
+        ),
+        ToolDefinition(
+            "function_tag_update",
+            """精确添加或移除函数标签。\n\n输入输出与副作用：输入程序会话、函数内地址、add/remove 和完整标签名；返回更新后标签；事务失败自动回滚。\n\n何时使用：维护客观函数分类时调用；读取标签用 function_tags，修改函数名用 function_rename。\n""",
+            function_tag_update,
+        ),
+        ToolDefinition(
+            "bookmark_set",
+            """设置或删除指定地址的书签。\n\n输入输出与副作用：输入程序会话、地址、类型、分类和注释；comment 为 null 时删除精确匹配书签；事务失败自动回滚。\n\n何时使用：记录待办或审查锚点时调用；保存分析正文用 comment_set。\n""",
+            bookmark_set,
+        ),
     )
     for definition in definitions:
         registry.register(definition)

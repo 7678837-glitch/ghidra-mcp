@@ -168,6 +168,23 @@ def test_analysis_outputs_are_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
     }
 
 
+def test_decompile_default_truncates_conversation_sized_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ghidra_mcp.tools import analysis
+
+    monkeypatch.setattr(FakeDecompiledFunction, "getC", lambda _self: "x" * 50_001)
+    monkeypatch.setattr(analysis, "_new_decompiler", FakeDecompiler)
+    registry = ToolRegistry()
+    analysis.register_analysis_tools(registry, FakeWorkspace())
+    tool = {item.name: item.handler for item in registry.enabled_tools()}["decompile_function"]
+
+    result = tool("program-1", "00400010")
+
+    assert len(result["c"]) == 50_000
+    assert result["truncated"] is True
+
+
 def test_control_flow_graph_rejects_at_bound_without_consuming_more(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -11,7 +11,7 @@
 | `program_info` | 返回格式、语言、编译器和地址范围 | 不返回函数或符号详情 |
 | `program_close` | 保存并释放程序上下文和项目锁 | 完成分析后必须调用 |
 | `memory_blocks_list` | 列出内存块、范围和权限 | 先用它定位可读范围 |
-| `memory_read` | 读取最多 1 MiB 的原始字节 | 已知地址时使用 |
+| `memory_read` | 读取最多 1 MiB 原始字节；可选解释最多 4096 字节为 ASCII 和整数/指针候选 | 已知地址时使用 |
 | `memory_search` | 搜索精确十六进制字节模式 | 文本语义搜索改用 `strings_list` |
 
 ## 导航与列表

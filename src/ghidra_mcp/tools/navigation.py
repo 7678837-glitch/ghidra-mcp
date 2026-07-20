@@ -45,13 +45,46 @@ def register_navigation_tools(registry: ToolRegistry, workspace: ProgramWorkspac
             for block in memory.getBlocks()
         ]
 
-    def memory_read(program_id: str, address: str, length: int) -> dict[str, object]:
+    def memory_read(
+        program_id: str,
+        address: str,
+        length: int,
+        interpret: bool = False,
+        unit_size: int = 8,
+        byte_order: str = "little",
+    ) -> dict[str, object]:
         if not 1 <= length <= 1_048_576:
             raise ToolInputError("length 必须在 1 到 1048576 之间")
+        if unit_size not in {1, 2, 4, 8}:
+            raise ToolInputError("unit_size 必须是 1、2、4 或 8")
+        if byte_order not in {"little", "big"}:
+            raise ToolInputError("byte_order 必须是 little 或 big")
+        if interpret and length > 4096:
+            raise ToolInputError("解释型 memory_read 的 length 不得超过 4096")
         api = workspace.get(program_id)
         resolved = _address(api, address)
         data = bytes((int(value) & 0xFF) for value in api.getBytes(resolved, length))
-        return {"address": str(resolved), "length": len(data), "hex": data.hex()}
+        result: dict[str, object] = {
+            "address": str(resolved),
+            "length": len(data),
+            "hex": data.hex(),
+        }
+        if not interpret:
+            return result
+        complete_length = len(data) - (len(data) % unit_size)
+        result.update(
+            {
+                "ascii": "".join(chr(value) if 32 <= value < 127 else "." for value in data),
+                "unit_size": unit_size,
+                "byte_order": byte_order,
+                "unsigned_values": [
+                    int.from_bytes(data[offset : offset + unit_size], byte_order)
+                    for offset in range(0, complete_length, unit_size)
+                ],
+                "trailing_hex": data[complete_length:].hex(),
+            }
+        )
+        return result
 
     def functions_list(
         program_id: str, offset: int = 0, limit: int = 100
@@ -62,10 +95,7 @@ def register_navigation_tools(registry: ToolRegistry, workspace: ProgramWorkspac
             raise ToolInputError("limit 必须在 1 到 1000 之间")
         program = workspace.get(program_id).getCurrentProgram()
         functions = program.getFunctionManager().getFunctions(True)
-        return [
-            _function_json(function)
-            for function in islice(functions, offset, offset + limit)
-        ]
+        return [_function_json(function) for function in islice(functions, offset, offset + limit)]
 
     def function_get(program_id: str, address: str) -> dict[str, object]:
         api = workspace.get(program_id)
@@ -90,9 +120,9 @@ def register_navigation_tools(registry: ToolRegistry, workspace: ProgramWorkspac
             "memory_read",
             """从程序内存读取有界字节序列。
 
-输入输出与副作用：输入程序会话标识、地址和长度；返回规范地址、实际长度和十六进制字节；只读，单次最多 1 MiB。
+输入输出与副作用：输入程序会话标识、地址和长度；默认返回十六进制字节；可选解释最多 4096 字节为 ASCII 和指定字节序的 1/2/4/8 字节无符号值；只读，原始读取最多 1 MiB。
 
-何时使用：需要原始字节验证反汇编或数据时调用；只需查看内存布局时改用 memory_blocks_list。
+何时使用：需要原始字节、字符串线索、整数或指针候选时调用；只需查看内存布局时改用 memory_blocks_list，机器指令用 instructions_list。
 """,
             memory_read,
         ),

@@ -56,11 +56,18 @@ class FakePyGhidra:
         yield FakeAPI(binary_path)
 
 
+def write_ghidra_version(install_dir: Path) -> None:
+    properties = install_dir / "Ghidra" / "application.properties"
+    properties.parent.mkdir(parents=True)
+    properties.write_text("application.version=12.1.2\n", encoding="utf-8")
+
+
 def test_program_tools_cover_open_list_info_and_close(tmp_path: Path) -> None:
     from ghidra_mcp.tools.programs import register_program_tools
 
     install_dir = tmp_path / "ghidra"
     install_dir.mkdir()
+    write_ghidra_version(install_dir)
     binary = tmp_path / "sample.bin"
     binary.write_bytes(b"sample")
     workspace = ProgramWorkspace(

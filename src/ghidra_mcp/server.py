@@ -80,9 +80,6 @@ def _schema_version(registry: ToolRegistry) -> str:
 
 
 def _runtime_version() -> str:
-    working_version = Path.cwd() / "VERSION"
-    if working_version.is_file():
-        return working_version.read_text(encoding="utf-8").strip()
     for parent in Path(__file__).resolve().parents:
         version_file = parent / "VERSION"
         if version_file.is_file():
