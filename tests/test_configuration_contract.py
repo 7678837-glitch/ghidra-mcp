@@ -28,3 +28,27 @@ def test_unknown_toml_key_reports_key_and_source(tmp_path: Path) -> None:
 
     with pytest.raises(ConfigurationError, match=r"server\.porrt.*settings\.toml"):
         load_settings(config_path=config, dotenv_path=None, environ={})
+
+
+def test_runtime_path_and_transport_are_validated_at_configuration_boundary(tmp_path: Path) -> None:
+    from ghidra_mcp.config import ConfigurationError, load_settings
+
+    install_dir = tmp_path / "ghidra"
+    install_dir.mkdir()
+    settings = load_settings(
+        config_path=None,
+        dotenv_path=None,
+        environ={
+            "GHIDRA_INSTALL_DIR": str(install_dir),
+            "GHIDRA_MCP_TRANSPORT": "streamable-http",
+        },
+    )
+    assert settings.install_dir == install_dir.resolve()
+    assert settings.transport == "streamable-http"
+
+    with pytest.raises(ConfigurationError, match="transport"):
+        load_settings(
+            config_path=None,
+            dotenv_path=None,
+            environ={"GHIDRA_MCP_TRANSPORT": "websocket"},
+        )

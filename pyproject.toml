@@ -12,6 +12,9 @@ dependencies = [
   "pyghidra>=3.0,<4",
 ]
 
+[project.scripts]
+ghidra-mcp = "ghidra_mcp.cli:main"
+
 [project.optional-dependencies]
 dev = [
   "pytest>=8.4,<9",

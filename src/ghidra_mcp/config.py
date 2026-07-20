@@ -15,6 +15,7 @@ class ConfigurationError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class Settings:
+    install_dir: Path | None = None
     transport: str = "stdio"
     host: str = "127.0.0.1"
     port: int = 8765
@@ -23,6 +24,7 @@ class Settings:
 
 
 _ALLOWED_KEYS = {
+    "ghidra": {"install_dir"},
     "server": {"transport", "host", "port"},
     "tools": {"groups"},
     "storage": {"root"},
@@ -80,9 +82,15 @@ def load_settings(
     environment = os.environ if environ is None else environ
 
     server = document.get("server", {})
+    ghidra = document.get("ghidra", {})
     tools = document.get("tools", {})
     storage = document.get("storage", {})
-    assert isinstance(server, dict) and isinstance(tools, dict) and isinstance(storage, dict)
+    assert (
+        isinstance(server, dict)
+        and isinstance(ghidra, dict)
+        and isinstance(tools, dict)
+        and isinstance(storage, dict)
+    )
 
     def value(env_key: str, toml_values: dict[str, object], toml_key: str, default: object) -> object:
         return environment.get(env_key, dotenv.get(env_key, toml_values.get(toml_key, default)))
@@ -95,10 +103,20 @@ def load_settings(
     else:
         groups = tuple(groups_value)
 
+    transport = str(value("GHIDRA_MCP_TRANSPORT", server, "transport", "stdio"))
+    if transport not in {"stdio", "streamable-http"}:
+        raise ConfigurationError("server.transport 必须是 stdio 或 streamable-http")
+    install_value = value("GHIDRA_INSTALL_DIR", ghidra, "install_dir", "")
+    install_dir = Path(str(install_value)).resolve() if install_value else None
+    port = _integer(value("GHIDRA_MCP_PORT", server, "port", 8765), key="server.port")
+    if not 1 <= port <= 65535:
+        raise ConfigurationError("server.port 必须在 1 到 65535 之间")
+
     return Settings(
-        transport=str(value("GHIDRA_MCP_TRANSPORT", server, "transport", "stdio")),
+        install_dir=install_dir,
+        transport=transport,
         host=str(value("GHIDRA_MCP_HOST", server, "host", "127.0.0.1")),
-        port=_integer(value("GHIDRA_MCP_PORT", server, "port", 8765), key="server.port"),
+        port=port,
         tool_groups=groups,
         storage_root=Path(str(value("GHIDRA_MCP_STORAGE_ROOT", storage, "root", "data/projects"))),
     )
