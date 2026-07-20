@@ -37,6 +37,7 @@ class FakePyGhidra:
     def __init__(self) -> None:
         self.start_calls: list[Path] = []
         self.open_calls: list[Path] = []
+        self.open_options: list[dict[str, object]] = []
         self.closed: list[Path] = []
 
     def start(self, *, install_dir: Path) -> object:
@@ -44,8 +45,9 @@ class FakePyGhidra:
         return object()
 
     @contextmanager
-    def open_program(self, binary_path: Path, **_: object):
+    def open_program(self, binary_path: Path, **options: object):
         self.open_calls.append(binary_path)
+        self.open_options.append(options)
         try:
             yield {"binary": binary_path}
         finally:
@@ -88,3 +90,23 @@ def test_workspace_rejects_missing_binary_before_starting_jvm(tmp_path: Path) ->
         workspace.open(tmp_path / "missing.bin")
 
     assert fake.start_calls == []
+
+
+def test_workspace_uses_configured_persistent_project_root(tmp_path: Path) -> None:
+    from ghidra_mcp.runtime import GhidraRuntime, ProgramWorkspace
+
+    install_dir = tmp_path / "ghidra"
+    install_dir.mkdir()
+    binary = tmp_path / "sample.bin"
+    binary.write_bytes(b"sample")
+    project_root = tmp_path / "projects"
+    fake = FakePyGhidra()
+    workspace = ProgramWorkspace(
+        GhidraRuntime(install_dir, pyghidra_module=fake), project_location=project_root
+    )
+
+    program_id = workspace.open(binary)
+    workspace.close(program_id)
+
+    assert project_root.is_dir()
+    assert fake.open_options[0]["project_location"] == project_root.resolve()

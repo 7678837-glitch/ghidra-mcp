@@ -27,6 +27,7 @@ packages = ["src/ghidra_mcp"]
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+markers = ["integration: requires a real Ghidra installation and generated ELF fixtures"]
 
 [tool.ruff]
 line-length = 100

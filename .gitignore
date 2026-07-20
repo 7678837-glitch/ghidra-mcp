@@ -5,6 +5,7 @@ __pycache__/
 *.py[cod]
 dist/
 build/
+tests/fixtures/generated/
 .env
 .AIINFO/yuki_pending.jsonl
 data/*

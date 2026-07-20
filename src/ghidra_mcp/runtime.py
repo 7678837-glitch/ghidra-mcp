@@ -42,8 +42,11 @@ class GhidraRuntime:
 
 
 class ProgramWorkspace:
-    def __init__(self, runtime: GhidraRuntime) -> None:
+    def __init__(self, runtime: GhidraRuntime, *, project_location: Path | None = None) -> None:
         self.runtime = runtime
+        self.project_location = project_location.resolve() if project_location is not None else None
+        if self.project_location is not None:
+            self.project_location.mkdir(parents=True, exist_ok=True)
         self._programs: dict[str, _ProgramRecord] = {}
         self._lock = RLock()
 
@@ -59,9 +62,12 @@ class ProgramWorkspace:
         if not binary.is_file():
             raise WorkspaceError(f"输入二进制不存在：{binary}")
         self.runtime.ensure_started()
+        effective_location = (
+            project_location.resolve() if project_location is not None else self.project_location
+        )
         context = self.runtime.pyghidra.open_program(
             binary,
-            project_location=project_location,
+            project_location=effective_location,
             project_name=project_name,
             analyze=analyze,
         )

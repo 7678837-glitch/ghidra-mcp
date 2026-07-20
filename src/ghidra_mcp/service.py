@@ -28,7 +28,7 @@ def create_service(settings: Settings, *, pyghidra_module: Any | None = None) ->
     if settings.install_dir is None:
         raise ConfigurationError("必须通过 GHIDRA_INSTALL_DIR 或 TOML 配置 Ghidra 安装目录")
     runtime = GhidraRuntime(settings.install_dir, pyghidra_module=pyghidra_module)
-    workspace = ProgramWorkspace(runtime)
+    workspace = ProgramWorkspace(runtime, project_location=settings.storage_root)
     registry = build_default_registry(workspace)
     app = create_mcp_app(registry, host=settings.host, port=settings.port)
     return MCPService(settings=settings, app=app, workspace=workspace)
