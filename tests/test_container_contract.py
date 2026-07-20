@@ -15,6 +15,7 @@ def test_container_is_pinned_multi_stage_non_root_and_health_checked() -> None:
     assert "GHIDRA_SHA256=" in dockerfile
     assert "sha256sum -c" in dockerfile
     assert "USER ghidra-mcp" in dockerfile
+    assert "JAVA_HOME_OVERRIDE=/usr/lib/jvm/java-21-openjdk-amd64" in dockerfile
     assert "TZ=UTC" in dockerfile
     assert "GHIDRA_MCP_TRANSPORT=streamable-http" in dockerfile
     assert "HEALTHCHECK" in dockerfile and "/health" in dockerfile
