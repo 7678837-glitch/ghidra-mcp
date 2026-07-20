@@ -376,3 +376,52 @@ def test_workspace_save_failure_keeps_session_available_for_retry(tmp_path: Path
     assert workspace.get(program_id)["binary"] == binary.resolve()
     workspace.save(program_id)
     workspace.close(program_id)
+
+
+def test_existing_program_file_error_after_enter_never_falls_back_to_import(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ghidra_mcp.runtime import GhidraRuntime
+
+    class Project:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    class ModernPyGhidra:
+        def __init__(self):
+            self.project = Project()
+            self.loader_calls = 0
+            self.existing_closed = False
+
+        def open_project(self, *_args, **_kwargs):
+            return self.project
+
+        @contextmanager
+        def program_context(self, *_args):
+            try:
+                yield object()
+            finally:
+                self.existing_closed = True
+
+        def program_loader(self):
+            self.loader_calls += 1
+            raise AssertionError("已进入现有程序后不得回退到导入")
+
+    fake = ModernPyGhidra()
+    runtime = GhidraRuntime(tmp_path, pyghidra_module=fake)
+    monkeypatch.setattr(runtime, "_flat_api", lambda program: program)
+
+    with pytest.raises(FileNotFoundError, match="disk unavailable"):
+        with runtime._modern_program_context(
+            tmp_path / "sample.bin",
+            project_location=tmp_path,
+            project_name="sample",
+            analyze=False,
+        ):
+            raise FileNotFoundError("disk unavailable")
+
+    assert fake.loader_calls == 0
+    assert fake.existing_closed is True
+    assert fake.project.closed is True

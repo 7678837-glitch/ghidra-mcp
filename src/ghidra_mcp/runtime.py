@@ -80,14 +80,22 @@ class GhidraRuntime:
         project = self.pyghidra.open_project(location, name, create=True)
         project_path = f"/{binary.name}"
         try:
+            existing_context = self.pyghidra.program_context(project, project_path)
             try:
-                with self.pyghidra.program_context(project, project_path) as program:
+                program = existing_context.__enter__()
+            except FileNotFoundError:
+                pass
+            else:
+                try:
                     if analyze:
                         self.pyghidra.analyze(program)
                     yield self._flat_api(program)
+                except BaseException:
+                    if not existing_context.__exit__(*sys.exc_info()):
+                        raise
+                else:
+                    existing_context.__exit__(None, None, None)
                 return
-            except FileNotFoundError:
-                pass
 
             results = (
                 self.pyghidra.program_loader()
