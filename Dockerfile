@@ -9,7 +9,8 @@ ARG GHIDRA_SHA256=b62e81a0390618466c019c60d8c2f796ced2509c4c1aea4a37644a77272cf9
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl unzip \
     && rm -rf /var/lib/apt/lists/*
-RUN curl -fsSL "$GHIDRA_URL" -o /tmp/ghidra.zip \
+RUN curl -fsSL --retry 5 --retry-all-errors --retry-max-time 300 \
+        "$GHIDRA_URL" -o /tmp/ghidra.zip \
     && echo "$GHIDRA_SHA256  /tmp/ghidra.zip" | sha256sum -c - \
     && unzip -q /tmp/ghidra.zip -d /opt \
     && mv /opt/ghidra_*_PUBLIC /opt/ghidra \
