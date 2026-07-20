@@ -1,4 +1,7 @@
-FROM ubuntu:24.04 AS ghidra
+FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90 AS ghidra
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=UTC
 
 ARG GHIDRA_URL=https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.2_build/ghidra_12.1.2_PUBLIC_20260605.zip
 ARG GHIDRA_SHA256=b62e81a0390618466c019c60d8c2f796ced2509c4c1aea4a37644a77272cf99d
@@ -12,7 +15,10 @@ RUN curl -fsSL "$GHIDRA_URL" -o /tmp/ghidra.zip \
     && mv /opt/ghidra_*_PUBLIC /opt/ghidra \
     && rm /tmp/ghidra.zip
 
-FROM ubuntu:24.04 AS wheels
+FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90 AS wheels
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=UTC
 
 WORKDIR /src
 RUN apt-get update \
@@ -27,7 +33,7 @@ RUN pip install --no-cache-dir uv==0.8.0 \
     && uv build --wheel --out-dir /dist \
     && pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt
 
-FROM ubuntu:24.04 AS runtime
+FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90 AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=UTC \
