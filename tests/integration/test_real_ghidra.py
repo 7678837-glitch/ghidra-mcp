@@ -38,7 +38,9 @@ def test_real_elf_shared_libraries_cover_read_decompile_write_and_reopen(tmp_pat
         blocks = tools["memory_blocks_list"](program_id)
         assert blocks
         readable = next(block for block in blocks if block["initialized"])
-        assert tools["memory_read"](program_id, readable["start"], 16)["length"] == 16
+        memory = tools["memory_read"](program_id, readable["start"], 16)
+        assert memory["length"] == 16
+        assert tools["memory_search"](program_id, memory["hex"][:8], max_results=5)
 
         functions = tools["functions_list"](program_id, offset=0, limit=1000)
         target = next(function for function in functions if function["name"] == expected_name)
@@ -58,13 +60,20 @@ def test_real_elf_shared_libraries_cover_read_decompile_write_and_reopen(tmp_pat
         tools["variables_list"](program_id, entry)
         assert tools["pcode_list"](program_id, entry, limit=20)
         assert tools["data_types_list"](program_id, limit=20)
+        first_type = tools["data_types_list"](program_id, limit=1)[0]
+        assert tools["data_type_get"](program_id, first_type["path"])["path"] == first_type["path"]
         tools["function_tags"](program_id, entry)
         tools["bookmarks_list"](program_id, limit=20)
+        assert tools["analysis_run"](program_id)["functions_after"] >= 1
 
         if expected_name == "fixture_symbolic":
             tools["function_rename"](program_id, entry, "verified_symbolic")
             tools["comment_set"](program_id, entry, "eol", "verified by integration test")
             assert any(item["address"] == entry for item in tools["comments_list"](program_id))
+            tools["function_tag_update"](program_id, entry, "add", "reviewed")
+            assert tools["function_tags"](program_id, entry)[0]["name"] == "reviewed"
+            tools["bookmark_set"](program_id, entry, "Analysis", "Review", "inspect")
+            assert any(item["address"] == entry for item in tools["bookmarks_list"](program_id))
         tools["program_close"](program_id)
 
         if expected_name == "fixture_symbolic":
