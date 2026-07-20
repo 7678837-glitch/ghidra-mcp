@@ -6,6 +6,7 @@ __pycache__/
 dist/
 build/
 .env
+.AIINFO/yuki_pending.jsonl
 data/*
 !data/config/
 !data/config/default.toml
