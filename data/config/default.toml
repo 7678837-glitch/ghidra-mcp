@@ -1,0 +1,10 @@
+[server]
+transport = "stdio"
+host = "127.0.0.1"
+port = 8765
+
+[tools]
+groups = []
+
+[storage]
+root = "data/projects"

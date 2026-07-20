@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ghidra-mcp"
+version = "20260720.1"
+description = "Single-process MCP server for headless Ghidra automation"
+requires-python = ">=3.11"
+dependencies = [
+  "mcp>=1.12,<2",
+  "pyghidra>=3.0,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.4,<9",
+  "ruff>=0.12,<0.13",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ghidra_mcp"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
