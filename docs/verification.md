@@ -61,4 +61,4 @@ GHIDRA_MCP_CONTAINER_URL=http://127.0.0.1:8765/mcp \
   uv run pytest tests/integration/test_container_mcp.py -q -s
 ```
 
-最终镜像摘要和 health 实测值在最终候选构建完成后写入本节，不提前声称。
+每次候选构建都应把镜像摘要与 `/health` 实测值记录在对应发布记录中；本文保留可重复执行的验收方法，不把某次本机镜像状态写成永久事实。
