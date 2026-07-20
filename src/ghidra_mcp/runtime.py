@@ -7,10 +7,18 @@ from threading import RLock
 from types import ModuleType
 from typing import Any
 from uuid import uuid4
+from dataclasses import dataclass
 
 
 class WorkspaceError(RuntimeError):
     """程序工作区操作失败。"""
+
+
+@dataclass(slots=True)
+class _ProgramRecord:
+    path: Path
+    context: Any
+    api: Any
 
 
 class GhidraRuntime:
@@ -36,7 +44,7 @@ class GhidraRuntime:
 class ProgramWorkspace:
     def __init__(self, runtime: GhidraRuntime) -> None:
         self.runtime = runtime
-        self._programs: dict[str, tuple[Any, Any]] = {}
+        self._programs: dict[str, _ProgramRecord] = {}
         self._lock = RLock()
 
     def open(
@@ -60,23 +68,43 @@ class ProgramWorkspace:
         api = context.__enter__()
         program_id = uuid4().hex
         with self._lock:
-            self._programs[program_id] = (context, api)
+            self._programs[program_id] = _ProgramRecord(binary, context, api)
         return program_id
 
     def get(self, program_id: str) -> Any:
         with self._lock:
             try:
-                return self._programs[program_id][1]
+                return self._programs[program_id].api
             except KeyError as error:
                 raise WorkspaceError(f"程序会话不存在：{program_id}") from error
+
+    def list_open(self) -> list[dict[str, str]]:
+        with self._lock:
+            return [
+                {"program_id": program_id, "path": str(record.path)}
+                for program_id, record in self._programs.items()
+            ]
+
+    def describe(self, program_id: str) -> dict[str, str]:
+        program = self.get(program_id).getCurrentProgram()
+        return {
+            "program_id": program_id,
+            "name": str(program.getName()),
+            "language": str(program.getLanguageID()),
+            "compiler": str(program.getCompilerSpec().getCompilerSpecID()),
+            "image_base": str(program.getImageBase()),
+            "format": str(program.getExecutableFormat()),
+            "min_address": str(program.getMinAddress()),
+            "max_address": str(program.getMaxAddress()),
+        }
 
     def close(self, program_id: str) -> None:
         with self._lock:
             try:
-                context, _ = self._programs.pop(program_id)
+                record = self._programs.pop(program_id)
             except KeyError as error:
                 raise WorkspaceError(f"程序会话不存在：{program_id}") from error
-        context.__exit__(None, None, None)
+        record.context.__exit__(None, None, None)
 
     def close_all(self) -> None:
         with self._lock:
