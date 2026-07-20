@@ -30,10 +30,15 @@ def _identity(function: Any) -> dict[str, str]:
 
 def register_analysis_tools(registry: ToolRegistry, workspace: ProgramWorkspace) -> None:
     def decompile_function(
-        program_id: str, address: str, timeout_seconds: int = 30
-    ) -> dict[str, str]:
+        program_id: str,
+        address: str,
+        timeout_seconds: int = 30,
+        max_chars: int = 1_000_000,
+    ) -> dict[str, str | bool]:
         if not 1 <= timeout_seconds <= 300:
             raise ToolInputError("timeout_seconds 必须在 1 到 300 之间")
+        if not 1 <= max_chars <= 2_000_000:
+            raise ToolInputError("max_chars 必须在 1 到 2000000 之间")
         api = workspace.get(program_id)
         program = api.getCurrentProgram()
         function = _function(api, address)
@@ -47,19 +52,32 @@ def register_analysis_tools(registry: ToolRegistry, workspace: ProgramWorkspace)
             decompiled = results.getDecompiledFunction()
             if decompiled is None:
                 raise RuntimeError("反编译完成但没有生成 C 文本")
-            return {**_identity(function), "c": str(decompiled.getC())}
+            text = str(decompiled.getC())
+            return {
+                **_identity(function),
+                "c": text[:max_chars],
+                "truncated": len(text) > max_chars,
+            }
         finally:
             decompiler.dispose()
 
-    def call_graph(program_id: str, address: str) -> dict[str, object]:
+    def call_graph(program_id: str, address: str, limit: int = 100) -> dict[str, object]:
+        if not 1 <= limit <= 1000:
+            raise ToolInputError("limit 必须在 1 到 1000 之间")
         api = workspace.get(program_id)
         function = _function(api, address)
-        callers = sorted(function.getCallingFunctions(None), key=lambda item: str(item.getEntryPoint()))
-        callees = sorted(function.getCalledFunctions(None), key=lambda item: str(item.getEntryPoint()))
+        callers = list(islice(function.getCallingFunctions(None), limit + 1))
+        callees = list(islice(function.getCalledFunctions(None), limit + 1))
+        callers_truncated = len(callers) > limit
+        callees_truncated = len(callees) > limit
+        callers = sorted(callers[:limit], key=lambda item: str(item.getEntryPoint()))
+        callees = sorted(callees[:limit], key=lambda item: str(item.getEntryPoint()))
         return {
             "function": _identity(function),
             "callers": [_identity(item) for item in callers],
             "callees": [_identity(item) for item in callees],
+            "callers_truncated": callers_truncated,
+            "callees_truncated": callees_truncated,
         }
 
     def control_flow_graph(program_id: str, address: str) -> dict[str, object]:
@@ -89,7 +107,7 @@ def register_analysis_tools(registry: ToolRegistry, workspace: ProgramWorkspace)
             "decompile_function",
             """将包含指定地址的函数反编译为 C 风格文本。
 
-输入输出与副作用：输入程序会话、函数内地址和 1 到 300 秒超时；返回函数身份与 C 文本；只读并在调用后释放反编译器。
+输入输出与副作用：输入程序会话、函数内地址、1 到 300 秒超时和文本字符上限；返回函数身份、受限 C 文本及截断标记；只读并在调用后释放反编译器。
 
 何时使用：理解函数高层语义时调用；核对具体机器指令时改用 instructions_list。
 """,
@@ -99,7 +117,7 @@ def register_analysis_tools(registry: ToolRegistry, workspace: ProgramWorkspace)
             "call_graph",
             """读取函数的一跳调用者与被调用者。
 
-输入输出与副作用：输入程序会话和函数内地址；返回目标函数、调用者与被调用者身份；只读。
+输入输出与副作用：输入程序会话、函数内地址和每个方向的结果上限；返回目标函数、受限调用者/被调用者及截断标记；只读。
 
 何时使用：定位调用关系和影响范围时调用；分析函数内部跳转结构时改用 control_flow_graph。
 """,

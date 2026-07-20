@@ -127,13 +127,37 @@ def test_analysis_tools_decompile_and_build_graphs(monkeypatch: pytest.MonkeyPat
         "name": "worker",
         "entry_point": "00400010",
         "c": "int worker(void) { return 7; }",
+        "truncated": False,
     }
     assert decompiler.disposed is True
     assert tools["call_graph"]("program-1", "00400010") == {
         "function": {"name": "worker", "entry_point": "00400010"},
         "callers": [{"name": "caller", "entry_point": "00400000"}],
         "callees": [{"name": "callee", "entry_point": "00400030"}],
+        "callers_truncated": False,
+        "callees_truncated": False,
     }
+
+
+def test_analysis_outputs_are_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    from ghidra_mcp.tools import analysis
+
+    registry = ToolRegistry()
+    decompiler = FakeDecompiler()
+    monkeypatch.setattr(analysis, "_new_decompiler", lambda: decompiler)
+    analysis.register_analysis_tools(registry, FakeWorkspace())
+    tools = {tool.name: tool.handler for tool in registry.enabled_tools()}
+
+    decompiled = tools["decompile_function"]("program-1", "00400010", 30, max_chars=10)
+    assert decompiled == {
+        "name": "worker",
+        "entry_point": "00400010",
+        "c": "int worker",
+        "truncated": True,
+    }
+    graph = tools["call_graph"]("program-1", "00400010", limit=1)
+    assert len(graph["callers"]) <= 1
+    assert len(graph["callees"]) <= 1
     assert tools["control_flow_graph"]("program-1", "00400010") == {
         "function": {"name": "worker", "entry_point": "00400010"},
         "nodes": ["00400010", "00400012"],

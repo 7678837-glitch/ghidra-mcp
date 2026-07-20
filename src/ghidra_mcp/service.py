@@ -31,6 +31,10 @@ class MCPService:
 def create_service(settings: Settings, *, pyghidra_module: Any | None = None) -> MCPService:
     if settings.install_dir is None:
         raise ConfigurationError("必须通过 GHIDRA_INSTALL_DIR 或 TOML 配置 Ghidra 安装目录")
+    if settings.transport == "streamable-http" and (
+        settings.auth_token is None or not settings.auth_token.strip()
+    ):
+        raise ConfigurationError("streamable-http 必须设置 GHIDRA_MCP_AUTH_TOKEN")
     if settings.transport == "streamable-http" and settings.input_root is None:
         raise ConfigurationError("streamable-http 必须设置 GHIDRA_MCP_INPUT_ROOT")
     runtime = GhidraRuntime(settings.install_dir, pyghidra_module=pyghidra_module)

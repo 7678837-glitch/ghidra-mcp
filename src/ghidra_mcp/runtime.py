@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+import sys
 from threading import RLock
 from types import ModuleType
 from typing import Any, Iterator
@@ -174,6 +175,12 @@ class ProgramWorkspace:
             analyze=analyze,
         )
         api = context.__enter__()
+        try:
+            if analyze:
+                self.runtime.save(api)
+        except BaseException:
+            context.__exit__(*sys.exc_info())
+            raise
         program_id = uuid4().hex
         with self._lock:
             self._programs[program_id] = _ProgramRecord(binary, context, api)

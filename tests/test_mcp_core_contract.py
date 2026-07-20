@@ -225,6 +225,22 @@ def test_workspace_uses_configured_persistent_project_root(tmp_path: Path) -> No
     assert fake.open_options[0]["project_location"] == project_root.resolve()
 
 
+def test_workspace_saves_completed_analysis_before_open_returns(tmp_path: Path) -> None:
+    from ghidra_mcp.runtime import GhidraRuntime, ProgramWorkspace
+
+    install_dir = tmp_path / "ghidra"
+    install_dir.mkdir()
+    binary = tmp_path / "sample.bin"
+    binary.write_bytes(b"sample")
+    fake = FakePyGhidra()
+    workspace = ProgramWorkspace(GhidraRuntime(install_dir, pyghidra_module=fake))
+
+    program_id = workspace.open(binary, analyze=True)
+
+    assert workspace.get(program_id).program.save_calls == 1
+    workspace.close(program_id)
+
+
 def test_workspace_rejects_paths_outside_input_root_and_symlink_escape(tmp_path: Path) -> None:
     from ghidra_mcp.runtime import GhidraRuntime, ProgramWorkspace, WorkspaceError
 
@@ -352,7 +368,7 @@ def test_workspace_save_failure_keeps_session_available_for_retry(tmp_path: Path
     workspace = ProgramWorkspace(
         GhidraRuntime(install_dir, pyghidra_module=RetryableSavePyGhidra())
     )
-    program_id = workspace.open(binary)
+    program_id = workspace.open(binary, analyze=False)
 
     with pytest.raises(RuntimeError, match="disk unavailable"):
         workspace.save(program_id)

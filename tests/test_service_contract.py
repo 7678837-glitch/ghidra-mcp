@@ -46,3 +46,20 @@ def test_http_service_requires_input_root_even_for_direct_settings(tmp_path: Pat
 
     with pytest.raises(ConfigurationError, match="GHIDRA_MCP_INPUT_ROOT"):
         create_service(settings, pyghidra_module=FakePyGhidra())
+
+
+def test_http_service_requires_token_even_for_direct_settings(tmp_path: Path) -> None:
+    from ghidra_mcp.config import ConfigurationError, Settings
+    from ghidra_mcp.service import create_service
+
+    install_dir = tmp_path / "ghidra"
+    install_dir.mkdir()
+    settings = Settings(
+        install_dir=install_dir,
+        transport="streamable-http",
+        input_root=tmp_path,
+        auth_token="   ",
+    )
+
+    with pytest.raises(ConfigurationError, match="GHIDRA_MCP_AUTH_TOKEN"):
+        create_service(settings, pyghidra_module=FakePyGhidra())

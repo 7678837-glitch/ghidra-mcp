@@ -29,10 +29,10 @@ RUN apt-get update \
 ENV PATH=/opt/build-venv/bin:$PATH
 COPY pyproject.toml uv.lock README.md VERSION ./
 COPY src ./src
-RUN pip install --no-cache-dir uv==0.8.0 \
+RUN pip install --no-cache-dir --retries 5 --timeout 60 uv==0.8.0 \
     && uv export --locked --no-dev --no-emit-project --output-file requirements.txt \
     && uv build --wheel --out-dir /dist \
-    && pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt
+    && pip wheel --no-cache-dir --retries 5 --timeout 60 --wheel-dir /wheels -r requirements.txt
 
 FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90 AS runtime
 
