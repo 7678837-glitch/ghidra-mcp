@@ -1,0 +1,144 @@
+from dataclasses import dataclass
+
+import pytest
+
+from ghidra_mcp.registry import ToolRegistry
+
+
+@dataclass(frozen=True)
+class FakeFunction:
+    name: str
+    entry: str
+
+    def getName(self) -> str:
+        return self.name
+
+    def getEntryPoint(self) -> str:
+        return self.entry
+
+    def getCallingFunctions(self, monitor: object) -> set["FakeFunction"]:
+        assert monitor is None
+        return {FakeFunction("caller", "00400000")}
+
+    def getCalledFunctions(self, monitor: object) -> set["FakeFunction"]:
+        assert monitor is None
+        return {FakeFunction("callee", "00400030")}
+
+    def getBody(self) -> set[str]:
+        return {"00400010", "00400012"}
+
+
+@dataclass
+class FakeInstruction:
+    address: str
+    flows: tuple[str, ...]
+    fallthrough: str | None
+
+    def getAddress(self) -> str:
+        return self.address
+
+    def getFlows(self) -> tuple[str, ...]:
+        return self.flows
+
+    def getFallThrough(self) -> str | None:
+        return self.fallthrough
+
+
+class FakeListing:
+    def getInstructions(self, body: set[str], forward: bool) -> list[FakeInstruction]:
+        assert forward is True
+        assert body == {"00400010", "00400012"}
+        return [
+            FakeInstruction("00400010", ("00400030",), "00400012"),
+            FakeInstruction("00400012", (), None),
+        ]
+
+
+class FakeProgram:
+    def getListing(self) -> FakeListing:
+        return FakeListing()
+
+
+class FakeAPI:
+    function = FakeFunction("worker", "00400010")
+
+    def getCurrentProgram(self) -> FakeProgram:
+        return FakeProgram()
+
+    def toAddr(self, address: str) -> str | None:
+        return address if address.startswith("0040") else None
+
+    def getFunctionContaining(self, address: str) -> FakeFunction | None:
+        return self.function if address in self.function.getBody() else None
+
+
+class FakeWorkspace:
+    def get(self, program_id: str) -> FakeAPI:
+        assert program_id == "program-1"
+        return FakeAPI()
+
+
+class FakeDecompiledFunction:
+    def getC(self) -> str:
+        return "int worker(void) { return 7; }"
+
+
+class FakeResults:
+    def decompileCompleted(self) -> bool:
+        return True
+
+    def getDecompiledFunction(self) -> FakeDecompiledFunction:
+        return FakeDecompiledFunction()
+
+
+class FakeDecompiler:
+    def __init__(self) -> None:
+        self.disposed = False
+
+    def openProgram(self, program: FakeProgram) -> bool:
+        return True
+
+    def decompileFunction(
+        self, function: FakeFunction, timeout_seconds: int, monitor: object
+    ) -> FakeResults:
+        assert function.name == "worker"
+        assert timeout_seconds == 30
+        assert monitor is None
+        return FakeResults()
+
+    def getLastMessage(self) -> str:
+        return ""
+
+    def dispose(self) -> None:
+        self.disposed = True
+
+
+def test_analysis_tools_decompile_and_build_graphs(monkeypatch: pytest.MonkeyPatch) -> None:
+    from ghidra_mcp.tools import analysis
+
+    decompiler = FakeDecompiler()
+    monkeypatch.setattr(analysis, "_new_decompiler", lambda: decompiler)
+    registry = ToolRegistry()
+    analysis.register_analysis_tools(registry, FakeWorkspace())
+    tools = {tool.name: tool.handler for tool in registry.enabled_tools()}
+
+    assert list(tools) == ["decompile_function", "call_graph", "control_flow_graph"]
+    assert tools["decompile_function"]("program-1", "00400010", 30) == {
+        "name": "worker",
+        "entry_point": "00400010",
+        "c": "int worker(void) { return 7; }",
+    }
+    assert decompiler.disposed is True
+    assert tools["call_graph"]("program-1", "00400010") == {
+        "function": {"name": "worker", "entry_point": "00400010"},
+        "callers": [{"name": "caller", "entry_point": "00400000"}],
+        "callees": [{"name": "callee", "entry_point": "00400030"}],
+    }
+    assert tools["control_flow_graph"]("program-1", "00400010") == {
+        "function": {"name": "worker", "entry_point": "00400010"},
+        "nodes": ["00400010", "00400012"],
+        "edges": [
+            {"from": "00400010", "to": "00400012", "kind": "fallthrough"},
+            {"from": "00400010", "to": "00400030", "kind": "flow"},
+        ],
+    }
