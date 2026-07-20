@@ -14,6 +14,7 @@ def test_container_is_pinned_multi_stage_non_root_and_health_checked() -> None:
     assert "apt-get install -y --no-install-recommends" in dockerfile and "python3" in dockerfile
     assert "GHIDRA_SHA256=" in dockerfile
     assert "--retry 5 --retry-all-errors --retry-max-time 300" in dockerfile
+    assert "--continue-at -" in dockerfile
     assert "sha256sum -c" in dockerfile
     assert "USER ghidra-mcp" in dockerfile
     assert "JAVA_HOME_OVERRIDE=/usr/lib/jvm/java-21-openjdk-amd64" in dockerfile
