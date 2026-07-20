@@ -8,7 +8,8 @@ def test_container_is_pinned_multi_stage_non_root_and_health_checked() -> None:
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
     assert dockerfile.count("FROM ") >= 3
-    assert "FROM python:3.12" in dockerfile
+    assert dockerfile.count("FROM ubuntu:24.04") == 3
+    assert "python3 -m venv /opt/build-venv" in dockerfile
     assert "apt-get install -y --no-install-recommends" in dockerfile and "python3" in dockerfile
     assert "GHIDRA_SHA256=" in dockerfile
     assert "sha256sum -c" in dockerfile

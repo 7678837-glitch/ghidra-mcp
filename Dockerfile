@@ -12,9 +12,14 @@ RUN curl -fsSL "$GHIDRA_URL" -o /tmp/ghidra.zip \
     && mv /opt/ghidra_*_PUBLIC /opt/ghidra \
     && rm /tmp/ghidra.zip
 
-FROM python:3.12.11-slim-bookworm AS wheels
+FROM ubuntu:24.04 AS wheels
 
 WORKDIR /src
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates python3 python3-venv \
+    && rm -rf /var/lib/apt/lists/* \
+    && python3 -m venv /opt/build-venv
+ENV PATH=/opt/build-venv/bin:$PATH
 COPY pyproject.toml uv.lock README.md VERSION ./
 COPY src ./src
 RUN pip install --no-cache-dir uv==0.8.0 \
