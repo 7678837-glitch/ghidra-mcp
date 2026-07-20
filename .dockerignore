@@ -1,0 +1,11 @@
+.git
+.env
+.venv
+.AIINFO
+__pycache__
+.pytest_cache
+.ruff_cache
+build
+dist
+data/projects
+tests/fixtures/generated
