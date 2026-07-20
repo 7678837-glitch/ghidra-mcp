@@ -21,6 +21,11 @@ def test_default_catalog_has_one_registration_path_and_no_placeholders() -> None
         "symbols_list",
         "references_list",
         "strings_list",
+        "function_rename",
+        "symbol_rename",
+        "comment_set",
+        "function_create",
+        "function_delete",
     ]
     assert all(callable(tool.handler) for tool in definitions)
     assert all("输入输出与副作用：" in tool.description for tool in definitions)
