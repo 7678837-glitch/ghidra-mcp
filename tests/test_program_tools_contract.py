@@ -46,7 +46,7 @@ class FakePyGhidra:
         return install_dir
 
     @contextmanager
-    def open_program(self, binary_path: Path, **_: object):
+    def _program_context_factory(self, binary_path: Path, **_: object):
         yield FakeAPI(binary_path)
 
 

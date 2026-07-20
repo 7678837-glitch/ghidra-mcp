@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from threading import RLock
 from types import ModuleType
-from typing import Any
+from typing import Any, Iterator
 from uuid import uuid4
-from dataclasses import dataclass
 
 
 class WorkspaceError(RuntimeError):
@@ -40,6 +41,88 @@ class GhidraRuntime:
                 self._launcher = self.pyghidra.start(install_dir=self.install_dir)
             return self._launcher
 
+    def program_context(
+        self,
+        binary: Path,
+        *,
+        project_location: Path | None,
+        project_name: str | None,
+        analyze: bool,
+    ) -> Any:
+        test_factory = getattr(self.pyghidra, "_program_context_factory", None)
+        if test_factory is not None:
+            return test_factory(
+                binary,
+                project_location=project_location,
+                project_name=project_name,
+                analyze=analyze,
+            )
+        return self._modern_program_context(
+            binary,
+            project_location=project_location,
+            project_name=project_name,
+            analyze=analyze,
+        )
+
+    @contextmanager
+    def _modern_program_context(
+        self,
+        binary: Path,
+        *,
+        project_location: Path | None,
+        project_name: str | None,
+        analyze: bool,
+    ) -> Iterator[Any]:
+        location = project_location or binary.parent
+        name = project_name or f"{binary.name}_ghidra"
+        project = self.pyghidra.open_project(location, name, create=True)
+        project_path = f"/{binary.name}"
+        try:
+            try:
+                with self.pyghidra.program_context(project, project_path) as program:
+                    if analyze:
+                        self.pyghidra.analyze(program)
+                    yield self._flat_api(program)
+                    self._save_program(program, project)
+                return
+            except FileNotFoundError:
+                pass
+
+            results = (
+                self.pyghidra.program_loader()
+                .source(str(binary))
+                .project(project)
+                .name(binary.name)
+                .load()
+            )
+            consumer = self._new_consumer()
+            program = results.getPrimaryDomainObject(consumer)
+            try:
+                if analyze:
+                    self.pyghidra.analyze(program)
+                results.save(self.pyghidra.task_monitor())
+                yield self._flat_api(program)
+                self._save_program(program, project)
+            finally:
+                program.release(consumer)
+                results.close()
+        finally:
+            project.close()
+
+    def _flat_api(self, program: Any) -> Any:
+        from ghidra.program.flatapi import FlatProgramAPI
+
+        return FlatProgramAPI(program)
+
+    def _new_consumer(self) -> Any:
+        from java.lang import Object
+
+        return Object()
+
+    def _save_program(self, program: Any, project: Any) -> None:
+        program.save("ghidra-mcp", self.pyghidra.task_monitor())
+        project.save()
+
 
 class ProgramWorkspace:
     def __init__(self, runtime: GhidraRuntime, *, project_location: Path | None = None) -> None:
@@ -65,7 +148,7 @@ class ProgramWorkspace:
         effective_location = (
             project_location.resolve() if project_location is not None else self.project_location
         )
-        context = self.runtime.pyghidra.open_program(
+        context = self.runtime.program_context(
             binary,
             project_location=effective_location,
             project_name=project_name,

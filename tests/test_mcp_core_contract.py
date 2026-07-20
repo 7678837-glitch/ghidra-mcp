@@ -45,7 +45,7 @@ class FakePyGhidra:
         return object()
 
     @contextmanager
-    def open_program(self, binary_path: Path, **options: object):
+    def _program_context_factory(self, binary_path: Path, **options: object):
         self.open_calls.append(binary_path)
         self.open_options.append(options)
         try:
