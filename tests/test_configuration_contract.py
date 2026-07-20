@@ -30,6 +30,16 @@ def test_unknown_toml_key_reports_key_and_source(tmp_path: Path) -> None:
         load_settings(config_path=config, dotenv_path=None, environ={})
 
 
+def test_unimplemented_tool_groups_fail_instead_of_being_silently_ignored(tmp_path: Path) -> None:
+    from ghidra_mcp.config import ConfigurationError, load_settings
+
+    config = tmp_path / "settings.toml"
+    config.write_text('[tools]\ngroups = ["advanced"]\n', encoding="utf-8")
+
+    with pytest.raises(ConfigurationError, match=r"未知配置节 tools.*settings\.toml"):
+        load_settings(config_path=config, dotenv_path=None, environ={})
+
+
 def test_runtime_path_and_transport_are_validated_at_configuration_boundary(tmp_path: Path) -> None:
     from ghidra_mcp.config import ConfigurationError, load_settings
 

@@ -19,7 +19,6 @@ class Settings:
     transport: str = "stdio"
     host: str = "127.0.0.1"
     port: int = 8765
-    tool_groups: tuple[str, ...] = ()
     storage_root: Path = Path("data/projects")
     auth_token: str | None = field(default=None, repr=False)
 
@@ -27,7 +26,6 @@ class Settings:
 _ALLOWED_KEYS = {
     "ghidra": {"install_dir"},
     "server": {"transport", "host", "port"},
-    "tools": {"groups"},
     "storage": {"root"},
 }
 
@@ -84,25 +82,15 @@ def load_settings(
 
     server = document.get("server", {})
     ghidra = document.get("ghidra", {})
-    tools = document.get("tools", {})
     storage = document.get("storage", {})
     assert (
         isinstance(server, dict)
         and isinstance(ghidra, dict)
-        and isinstance(tools, dict)
         and isinstance(storage, dict)
     )
 
     def value(env_key: str, toml_values: dict[str, object], toml_key: str, default: object) -> object:
         return environment.get(env_key, dotenv.get(env_key, toml_values.get(toml_key, default)))
-
-    groups_value = value("GHIDRA_MCP_TOOL_GROUPS", tools, "groups", ())
-    if isinstance(groups_value, str):
-        groups = tuple(item.strip() for item in groups_value.split(",") if item.strip())
-    elif isinstance(groups_value, list):
-        groups = tuple(str(item) for item in groups_value)
-    else:
-        groups = tuple(groups_value)
 
     transport = str(value("GHIDRA_MCP_TRANSPORT", server, "transport", "stdio"))
     if transport not in {"stdio", "streamable-http"}:
@@ -122,7 +110,6 @@ def load_settings(
         transport=transport,
         host=str(value("GHIDRA_MCP_HOST", server, "host", "127.0.0.1")),
         port=port,
-        tool_groups=groups,
         storage_root=Path(str(value("GHIDRA_MCP_STORAGE_ROOT", storage, "root", "data/projects"))),
         auth_token=auth_token,
     )
