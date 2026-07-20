@@ -20,13 +20,14 @@ class Settings:
     host: str = "127.0.0.1"
     port: int = 8765
     storage_root: Path = Path("data/projects")
+    input_root: Path | None = None
     auth_token: str | None = field(default=None, repr=False)
 
 
 _ALLOWED_KEYS = {
     "ghidra": {"install_dir"},
     "server": {"transport", "host", "port"},
-    "storage": {"root"},
+    "storage": {"root", "input_root"},
 }
 
 
@@ -99,6 +100,10 @@ def load_settings(
     auth_token = auth_token.strip() or None
     if transport == "streamable-http" and auth_token is None:
         raise ConfigurationError("streamable-http 必须设置 GHIDRA_MCP_AUTH_TOKEN")
+    input_value = value("GHIDRA_MCP_INPUT_ROOT", storage, "input_root", "")
+    input_root = Path(str(input_value)).resolve() if input_value else None
+    if transport == "streamable-http" and input_root is None:
+        raise ConfigurationError("streamable-http 必须设置 GHIDRA_MCP_INPUT_ROOT")
     install_value = value("GHIDRA_INSTALL_DIR", ghidra, "install_dir", "")
     install_dir = Path(str(install_value)).resolve() if install_value else None
     port = _integer(value("GHIDRA_MCP_PORT", server, "port", 8765), key="server.port")
@@ -111,5 +116,6 @@ def load_settings(
         host=str(value("GHIDRA_MCP_HOST", server, "host", "127.0.0.1")),
         port=port,
         storage_root=Path(str(value("GHIDRA_MCP_STORAGE_ROOT", storage, "root", "data/projects"))),
+        input_root=input_root,
         auth_token=auth_token,
     )

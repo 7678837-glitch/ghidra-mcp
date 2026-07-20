@@ -49,6 +49,7 @@ def register_write_tools(registry: ToolRegistry, workspace: ProgramWorkspace) ->
         new_name = _name(name)
         with program_transaction(program, "Rename function"):
             function.setName(new_name, _user_defined_source())
+        workspace.save(program_id)
         return {
             "entry_point": str(function.getEntryPoint()),
             "old_name": old_name,
@@ -66,6 +67,7 @@ def register_write_tools(registry: ToolRegistry, workspace: ProgramWorkspace) ->
         new_name = _name(name)
         with program_transaction(program, "Rename symbol"):
             symbol.setName(new_name, _user_defined_source())
+        workspace.save(program_id)
         return {
             "address": str(symbol.getAddress()),
             "old_name": old_name,
@@ -82,6 +84,7 @@ def register_write_tools(registry: ToolRegistry, workspace: ProgramWorkspace) ->
         comment_type = _comment_type(normalized_kind)
         with program_transaction(program, "Set comment"):
             program.getListing().setComment(resolved, comment_type, text)
+        workspace.save(program_id)
         return {"address": str(resolved), "kind": normalized_kind, "text": text}
 
     def function_create(program_id: str, address: str, name: str) -> dict[str, str]:
@@ -95,6 +98,7 @@ def register_write_tools(registry: ToolRegistry, workspace: ProgramWorkspace) ->
             function = api.createFunction(resolved, new_name)
             if function is None:
                 raise RuntimeError(f"Ghidra 未能在 {address} 创建函数")
+        workspace.save(program_id)
         return {"name": str(function.getName()), "entry_point": str(function.getEntryPoint())}
 
     def function_delete(program_id: str, address: str) -> dict[str, str]:
@@ -107,6 +111,7 @@ def register_write_tools(registry: ToolRegistry, workspace: ProgramWorkspace) ->
         program = api.getCurrentProgram()
         with program_transaction(program, "Delete function"):
             api.removeFunction(function)
+        workspace.save(program_id)
         return {"deleted": entry_point}
 
     definitions = (

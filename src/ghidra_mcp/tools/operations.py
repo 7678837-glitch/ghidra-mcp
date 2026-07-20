@@ -74,6 +74,7 @@ def register_operation_tools(registry: ToolRegistry, workspace: ProgramWorkspace
         manager = program.getFunctionManager()
         before = int(manager.getFunctionCount())
         api.analyzeAll(program)
+        workspace.save(program_id)
         return {"functions_before": before, "functions_after": int(manager.getFunctionCount())}
 
     def data_type_get(program_id: str, path: str) -> dict[str, object]:
@@ -87,6 +88,7 @@ def register_operation_tools(registry: ToolRegistry, workspace: ProgramWorkspace
         value = _data_type(program, path)
         with program_transaction(program, "Apply data type"):
             data = program.getListing().createData(resolved, value)
+        workspace.save(program_id)
         return {
             "address": str(data.getAddress()),
             "length": int(data.getLength()),
@@ -111,6 +113,7 @@ def register_operation_tools(registry: ToolRegistry, workspace: ProgramWorkspace
                 function.addTag(normalized)
             else:
                 function.removeTag(normalized)
+        workspace.save(program_id)
         tags = sorted(function.getTags(), key=lambda item: str(item.getName()))
         return {"tags": [{"name": str(tag.getName()), "comment": str(tag.getComment())} for tag in tags]}
 
@@ -128,6 +131,7 @@ def register_operation_tools(registry: ToolRegistry, workspace: ProgramWorkspace
                     manager.removeBookmark(existing)
             else:
                 manager.setBookmark(resolved, kind, category, comment)
+        workspace.save(program_id)
         return {"address": str(resolved), "type": kind, "category": category, "comment": comment}
 
     definitions = (

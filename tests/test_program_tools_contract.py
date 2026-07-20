@@ -11,6 +11,9 @@ class FakeCompilerSpec:
 
 
 class FakeProgram:
+    def save(self, _: str, __: object) -> None:
+        pass
+
     def getName(self) -> str:
         return "sample.bin"
 
@@ -44,6 +47,9 @@ class FakeAPI:
 class FakePyGhidra:
     def start(self, *, install_dir: Path) -> object:
         return install_dir
+
+    def task_monitor(self) -> object:
+        return object()
 
     @contextmanager
     def _program_context_factory(self, binary_path: Path, **_: object):

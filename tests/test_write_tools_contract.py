@@ -105,10 +105,14 @@ class FakeAPI:
 class FakeWorkspace:
     def __init__(self, *, fail_rename: bool = False) -> None:
         self.api = FakeAPI(fail_rename=fail_rename)
+        self.saved: list[str] = []
 
     def get(self, program_id: str) -> FakeAPI:
         assert program_id == "program-1"
         return self.api
+
+    def save(self, program_id: str) -> None:
+        self.saved.append(program_id)
 
 
 def _tools(workspace: FakeWorkspace, monkeypatch: pytest.MonkeyPatch):
@@ -149,6 +153,7 @@ def test_write_tools_commit_successful_transactions(monkeypatch: pytest.MonkeyPa
     ends = [event for event in workspace.api.program.events if event[0] == "end"]
     assert len(ends) == 5
     assert all(event[2] is True for event in ends)
+    assert workspace.saved == ["program-1"] * 5
 
 
 def test_write_tool_rolls_back_when_mutation_fails(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -160,3 +165,4 @@ def test_write_tool_rolls_back_when_mutation_fails(monkeypatch: pytest.MonkeyPat
 
     assert workspace.api.program.events[-1][0] == "end"
     assert workspace.api.program.events[-1][2] is False
+    assert workspace.saved == []

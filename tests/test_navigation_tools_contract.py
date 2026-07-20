@@ -156,3 +156,18 @@ def test_navigation_tools_reject_invalid_bounds_and_addresses() -> None:
         tools["functions_list"]("program-1", offset=0, limit=1001)
     with pytest.raises(ToolInputError, match="未包含在函数"):
         tools["function_get"]("program-1", "00400020")
+
+
+def test_functions_list_stops_after_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    from ghidra_mcp.tools.navigation import register_navigation_tools
+
+    def guarded(_self, _forward):
+        yield FakeFunction("entry", "00400010")
+        raise AssertionError("函数分页读取越过 limit")
+
+    monkeypatch.setattr(FakeFunctionManager, "getFunctions", guarded)
+    registry = ToolRegistry()
+    register_navigation_tools(registry, FakeWorkspace())
+    tools = {tool.name: tool.handler for tool in registry.enabled_tools()}
+
+    assert tools["functions_list"]("program-1", limit=1)[0]["name"] == "entry"

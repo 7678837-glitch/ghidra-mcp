@@ -57,6 +57,7 @@ stdio 模式用于同机 MCP 客户端，不要求 token。服务退出时会关
 | `GHIDRA_MCP_HOST` | `127.0.0.1` | HTTP 监听地址 |
 | `GHIDRA_MCP_PORT` | `8765` | HTTP 监听端口，范围 1–65535 |
 | `GHIDRA_MCP_STORAGE_ROOT` | `data/projects` | Ghidra 项目持久化目录 |
+| `GHIDRA_MCP_INPUT_ROOT` | 无 | HTTP 模式必填；`program_open` 只能读取该目录内文件，符号链接也不能越界 |
 | `GHIDRA_MCP_AUTH_TOKEN` | 无 | HTTP 模式必填；仅从环境变量或 `.env` 读取 |
 
 未知 TOML 节或键会立即报错。不要把真实 token 写入 TOML、命令历史、日志或 Git。

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial, wraps
 from hashlib import sha256
 import hmac
 from importlib.metadata import PackageNotFoundError, version as package_version
@@ -10,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.auth.provider import AccessToken, TokenVerifier
@@ -20,14 +24,39 @@ from starlette.responses import JSONResponse, Response
 from .registry import ToolRegistry
 
 
+class GhidraToolExecutor:
+    """让 JVM 工具保持单线程所有权，同时不阻塞异步传输。"""
+
+    def __init__(self) -> None:
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ghidra-mcp")
+
+    async def run(self, function: Any, *args: Any, **kwargs: Any) -> Any:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._executor, partial(function, *args, **kwargs))
+
+    def run_sync(self, function: Any, *args: Any, **kwargs: Any) -> Any:
+        return self._executor.submit(function, *args, **kwargs).result()
+
+    def shutdown(self) -> None:
+        self._executor.shutdown(wait=True)
+
+
+def _async_handler(function: Any, executor: GhidraToolExecutor) -> Any:
+    @wraps(function)
+    async def wrapped(*args: Any, **kwargs: Any) -> Any:
+        return await executor.run(function, *args, **kwargs)
+
+    return wrapped
+
+
 class StaticTokenVerifier(TokenVerifier):
     """验证部署者通过环境变量提供的单一 Bearer token。"""
 
     def __init__(self, expected_token: str) -> None:
-        self._expected_token = expected_token
+        self._expected_token = expected_token.encode("utf-8")
 
     async def verify_token(self, token: str) -> AccessToken | None:
-        if not hmac.compare_digest(token, self._expected_token):
+        if not hmac.compare_digest(token.encode("utf-8"), self._expected_token):
             return None
         return AccessToken(
             token=token,
@@ -89,6 +118,7 @@ def create_mcp_app(
     auth_token: str | None = None,
     version: str | None = None,
     git_commit: str | None = None,
+    tool_executor: GhidraToolExecutor | None = None,
 ) -> FastMCP:
     auth = None
     verifier = None
@@ -107,8 +137,11 @@ def create_mcp_app(
         auth=auth,
         token_verifier=verifier,
     )
+    executor = tool_executor or GhidraToolExecutor()
     for tool in registry.enabled_tools():
-        app.tool(name=tool.name, description=tool.description)(tool.handler)
+        app.tool(name=tool.name, description=tool.description)(
+            _async_handler(tool.handler, executor)
+        )
 
     health_payload = {
         "status": "ok",

@@ -1,5 +1,6 @@
 """数据、注释、变量、中间表示与标记的只读检查工具。"""
 
+from itertools import islice
 from typing import Any, Iterable
 
 from ..registry import ToolDefinition, ToolRegistry
@@ -10,7 +11,7 @@ from .navigation import ToolInputError
 def _page(values: Iterable[Any], offset: int, limit: int) -> list[Any]:
     if offset < 0 or not 1 <= limit <= 1000:
         raise ToolInputError("offset 不得小于 0，limit 必须在 1 到 1000 之间")
-    return list(values)[offset : offset + limit]
+    return list(islice(values, offset, offset + limit))
 
 
 def _address(api: Any, value: str) -> Any:
@@ -77,14 +78,16 @@ def register_inspection_tools(registry: ToolRegistry, workspace: ProgramWorkspac
         api = workspace.get(program_id)
         program = api.getCurrentProgram()
         listing = program.getListing()
-        results: list[dict[str, str]] = []
         addresses = listing.getCommentAddressIterator(program.getMemory(), True)
-        for address in addresses:
-            for name, kind in _comment_types().items():
-                text = listing.getComment(kind, address)
-                if text is not None:
-                    results.append({"address": str(address), "kind": name, "text": str(text)})
-        return _page(results, offset, limit)
+
+        def comments() -> Iterable[dict[str, str]]:
+            for address in addresses:
+                for name, kind in _comment_types().items():
+                    text = listing.getComment(kind, address)
+                    if text is not None:
+                        yield {"address": str(address), "kind": name, "text": str(text)}
+
+        return _page(comments(), offset, limit)
 
     def variables_list(program_id: str, address: str) -> list[dict[str, object]]:
         api = workspace.get(program_id)
@@ -107,7 +110,7 @@ def register_inspection_tools(registry: ToolRegistry, workspace: ProgramWorkspac
         instructions = api.getCurrentProgram().getListing().getInstructions(function.getBody(), True)
         return [
             {"address": str(instruction.getAddress()), "ops": [str(op) for op in instruction.getPcode()]}
-            for instruction in list(instructions)[:limit]
+            for instruction in islice(instructions, limit)
         ]
 
     def data_types_list(

@@ -85,8 +85,11 @@ class FakeAPI:
 
 
 class FakeWorkspace:
-    def __init__(self): self.api = FakeAPI()
+    def __init__(self):
+        self.api = FakeAPI()
+        self.saved = []
     def get(self, program_id): return self.api
+    def save(self, program_id): self.saved.append(program_id)
 
 
 def test_operation_tools_search_analyze_and_commit_mutations():
@@ -105,6 +108,7 @@ def test_operation_tools_search_analyze_and_commit_mutations():
     assert tools["function_tag_update"]("p", "00400000", "add", "reviewed")["tags"][0]["name"] == "reviewed"
     assert tools["bookmark_set"]("p", "00400000", "Analysis", "Review", "inspect")["comment"] == "inspect"
     assert all(event == ("end", True) for event in workspace.api.program.events if event[0] == "end")
+    assert workspace.saved == ["p"] * 4
 
 
 def test_operation_tools_reject_unbounded_or_ambiguous_inputs():

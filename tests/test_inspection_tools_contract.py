@@ -126,3 +126,37 @@ def test_inspection_tools_return_data_comments_variables_pcode_types_tags_and_bo
     assert tools["data_types_list"]("program-1")[0]["path"] == "/dword"
     assert tools["function_tags"]("program-1", "00400010") == [{"name": "reviewed", "comment": "checked"}]
     assert tools["bookmarks_list"]("program-1")[0]["category"] == "Review"
+
+
+def test_inspection_page_does_not_consume_past_requested_window():
+    from ghidra_mcp.tools.inspection import _page
+
+    def guarded():
+        yield "skip"
+        yield "first"
+        raise AssertionError("分页读取越过 offset + limit")
+
+    assert _page(guarded(), 1, 1) == ["first"]
+
+
+def test_comments_and_pcode_stop_after_limit(monkeypatch):
+    from ghidra_mcp.tools import inspection
+
+    def guarded_addresses(_self, _memory, _forward):
+        yield "00400010"
+        raise AssertionError("注释读取越过 limit")
+
+    def guarded_instructions(_self, _body, _forward):
+        yield FakeInstruction()
+        raise AssertionError("P-code 读取越过 limit")
+
+    monkeypatch.setattr(FakeListing, "getCommentAddressIterator", guarded_addresses)
+    monkeypatch.setattr(FakeListing, "getInstructions", guarded_instructions)
+    monkeypatch.setattr(inspection, "_comment_types", lambda: {"eol": "EOL"})
+    monkeypatch.setattr(inspection, "_is_parameter", lambda variable: variable.parameter)
+    registry = ToolRegistry()
+    inspection.register_inspection_tools(registry, FakeWorkspace())
+    tools = {tool.name: tool.handler for tool in registry.enabled_tools()}
+
+    assert len(tools["comments_list"]("program-1", limit=1)) == 1
+    assert len(tools["pcode_list"]("program-1", "00400010", limit=1)) == 1

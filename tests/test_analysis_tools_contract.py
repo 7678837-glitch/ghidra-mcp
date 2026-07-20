@@ -142,3 +142,22 @@ def test_analysis_tools_decompile_and_build_graphs(monkeypatch: pytest.MonkeyPat
             {"from": "00400010", "to": "00400030", "kind": "flow"},
         ],
     }
+
+
+def test_control_flow_graph_rejects_at_bound_without_consuming_more(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ghidra_mcp.tools import analysis
+
+    def guarded(_self, _body, _forward):
+        for index in range(10_001):
+            yield FakeInstruction(f"{0x400000 + index:x}", (), None)
+        raise AssertionError("控制流读取越过拒绝阈值")
+
+    monkeypatch.setattr(FakeListing, "getInstructions", guarded)
+    registry = ToolRegistry()
+    analysis.register_analysis_tools(registry, FakeWorkspace())
+    tools = {tool.name: tool.handler for tool in registry.enabled_tools()}
+
+    with pytest.raises(RuntimeError, match="10000"):
+        tools["control_flow_graph"]("program-1", "00400010")

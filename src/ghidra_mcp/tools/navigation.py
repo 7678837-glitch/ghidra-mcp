@@ -1,5 +1,6 @@
 """内存与函数的只读导航工具。"""
 
+from itertools import islice
 from typing import Any
 
 from ..registry import ToolDefinition, ToolRegistry
@@ -60,8 +61,11 @@ def register_navigation_tools(registry: ToolRegistry, workspace: ProgramWorkspac
         if not 1 <= limit <= 1000:
             raise ToolInputError("limit 必须在 1 到 1000 之间")
         program = workspace.get(program_id).getCurrentProgram()
-        functions = list(program.getFunctionManager().getFunctions(True))
-        return [_function_json(function) for function in functions[offset : offset + limit]]
+        functions = program.getFunctionManager().getFunctions(True)
+        return [
+            _function_json(function)
+            for function in islice(functions, offset, offset + limit)
+        ]
 
     def function_get(program_id: str, address: str) -> dict[str, object]:
         api = workspace.get(program_id)

@@ -5,3 +5,5 @@ port = 8765
 
 [storage]
 root = "data/projects"
+# Streamable HTTP 必须显式设置 input_root，将可分析文件限制在该目录内。
+# input_root = "data/input"

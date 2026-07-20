@@ -1,5 +1,6 @@
 """反编译与函数图分析工具。"""
 
+from itertools import islice
 from typing import Any
 
 from ..registry import ToolDefinition, ToolRegistry
@@ -65,7 +66,10 @@ def register_analysis_tools(registry: ToolRegistry, workspace: ProgramWorkspace)
         api = workspace.get(program_id)
         function = _function(api, address)
         instructions = list(
-            api.getCurrentProgram().getListing().getInstructions(function.getBody(), True)
+            islice(
+                api.getCurrentProgram().getListing().getInstructions(function.getBody(), True),
+                10_001,
+            )
         )
         if len(instructions) > 10_000:
             raise RuntimeError("函数指令超过 10000 条，拒绝生成过大的控制流图")

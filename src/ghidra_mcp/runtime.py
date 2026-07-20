@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 from threading import RLock
 from types import ModuleType
@@ -83,7 +84,6 @@ class GhidraRuntime:
                     if analyze:
                         self.pyghidra.analyze(program)
                     yield self._flat_api(program)
-                    self._save_program(program, project)
                 return
             except FileNotFoundError:
                 pass
@@ -102,7 +102,6 @@ class GhidraRuntime:
                     self.pyghidra.analyze(program)
                 results.save(self.pyghidra.task_monitor())
                 yield self._flat_api(program)
-                self._save_program(program, project)
             finally:
                 program.release(consumer)
                 results.close()
@@ -119,15 +118,33 @@ class GhidraRuntime:
 
         return Object()
 
-    def _save_program(self, program: Any, project: Any) -> None:
-        program.save("ghidra-mcp", self.pyghidra.task_monitor())
-        project.save()
+    def save(self, api: Any) -> None:
+        """在工具返回成功前持久化当前程序数据库。"""
+
+        api.getCurrentProgram().save("ghidra-mcp", self.pyghidra.task_monitor())
+
+
+def _persistent_project_name(binary: Path) -> str:
+    digest = sha256()
+    digest.update(str(binary).encode("utf-8"))
+    digest.update(b"\0")
+    with binary.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return f"{binary.name}-{digest.hexdigest()[:20]}"
 
 
 class ProgramWorkspace:
-    def __init__(self, runtime: GhidraRuntime, *, project_location: Path | None = None) -> None:
+    def __init__(
+        self,
+        runtime: GhidraRuntime,
+        *,
+        project_location: Path | None = None,
+        input_root: Path | None = None,
+    ) -> None:
         self.runtime = runtime
         self.project_location = project_location.resolve() if project_location is not None else None
+        self.input_root = input_root.resolve() if input_root is not None else None
         if self.project_location is not None:
             self.project_location.mkdir(parents=True, exist_ok=True)
         self._programs: dict[str, _ProgramRecord] = {}
@@ -138,12 +155,14 @@ class ProgramWorkspace:
         binary_path: Path,
         *,
         project_location: Path | None = None,
-        project_name: str | None = None,
         analyze: bool = True,
     ) -> str:
         binary = binary_path.resolve()
+        if self.input_root is not None and not binary.is_relative_to(self.input_root):
+            raise WorkspaceError(f"输入路径超出允许的输入根目录：{self.input_root}")
         if not binary.is_file():
             raise WorkspaceError(f"输入二进制不存在：{binary}")
+        project_name = _persistent_project_name(binary)
         self.runtime.ensure_started()
         effective_location = (
             project_location.resolve() if project_location is not None else self.project_location
@@ -190,10 +209,15 @@ class ProgramWorkspace:
     def close(self, program_id: str) -> None:
         with self._lock:
             try:
-                record = self._programs.pop(program_id)
+                record = self._programs[program_id]
             except KeyError as error:
                 raise WorkspaceError(f"程序会话不存在：{program_id}") from error
-        record.context.__exit__(None, None, None)
+            self.runtime.save(record.api)
+            del self._programs[program_id]
+            record.context.__exit__(None, None, None)
+
+    def save(self, program_id: str) -> None:
+        self.runtime.save(self.get(program_id))
 
     def close_all(self) -> None:
         with self._lock:

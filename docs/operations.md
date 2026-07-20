@@ -64,6 +64,8 @@ docker run --rm \
 | 现象 | 原因与处理 |
 |---|---|
 | HTTP 启动时报 token 缺失 | 设置非空 `GHIDRA_MCP_AUTH_TOKEN`；stdio 不需要 |
+| HTTP 启动时报 input root 缺失 | 设置 `GHIDRA_MCP_INPUT_ROOT`；容器默认 `/data/input`，且输入目录应只读挂载 |
+| `program_open` 报输入路径越界 | 把文件放入 `GHIDRA_MCP_INPUT_ROOT` 内；指向目录外的符号链接会被拒绝 |
 | `/mcp` 返回 401 | 缺少或错误的 `Authorization: Bearer <token>` |
 | `/mcp` 返回 400 | token 已通过，但请求不是有效 MCP 消息 |
 | `Unable to lock project` | 另一个会话/进程仍持有同一项目；先调用 `program_close` 或正常停止持有者 |
@@ -73,6 +75,7 @@ docker run --rm \
 ## 安全边界
 
 - Bearer token 是单一部署凭据，没有用户级权限模型；泄露后立即轮换并重启容器。
+- HTTP token 持有者只能打开 `GHIDRA_MCP_INPUT_ROOT` 内的常规文件；不要把宿主敏感目录挂入该根目录。
 - 输入文件会由 Ghidra 解析，应把服务放在受限容器和最小网络权限下。
 - 服务日志仅写 stdout/stderr，不应记录 token、二进制内容或个人信息。
 - 不要把 Docker socket、宿主根目录或可执行敏感目录挂入容器。

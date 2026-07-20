@@ -201,3 +201,34 @@ def test_listing_tools_validate_direction_address_and_page_size() -> None:
         tools["references_list"]("program-1", "00400010", direction="sideways")
     with pytest.raises(ToolInputError, match="地址"):
         tools["references_list"]("program-1", "invalid")
+
+
+def test_listing_page_does_not_consume_past_requested_window() -> None:
+    from ghidra_mcp.tools.listing import _page
+
+    def guarded():
+        yield "skip"
+        yield "first"
+        yield "second"
+        raise AssertionError("分页读取越过 offset + limit")
+
+    assert _page(guarded(), offset=1, limit=2) == ["first", "second"]
+
+
+def test_references_stop_after_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    from ghidra_mcp.tools.listing import register_listing_tools
+
+    def guarded_from(_self, address):
+        yield FakeReference(address, "00400030")
+        raise AssertionError("引用读取越过 limit")
+
+    def forbidden_to(_self, _address):
+        raise AssertionError("已有足够结果后不应读取另一方向")
+
+    monkeypatch.setattr(FakeReferenceManager, "getReferencesFrom", guarded_from)
+    monkeypatch.setattr(FakeReferenceManager, "getReferencesTo", forbidden_to)
+    registry = ToolRegistry()
+    register_listing_tools(registry, FakeWorkspace())
+    tools = {tool.name: tool.handler for tool in registry.enabled_tools()}
+
+    assert len(tools["references_list"]("program-1", "00400010", limit=1)) == 1

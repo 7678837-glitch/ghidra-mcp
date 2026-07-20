@@ -1,5 +1,6 @@
 """指令、符号、引用与字符串只读工具。"""
 
+from itertools import islice
 from typing import Any, Iterable
 
 from ..registry import ToolDefinition, ToolRegistry
@@ -12,7 +13,7 @@ def _page(values: Iterable[Any], *, offset: int, limit: int) -> list[Any]:
         raise ToolInputError("offset 不得小于 0")
     if not 1 <= limit <= 1000:
         raise ToolInputError("limit 必须在 1 到 1000 之间")
-    return list(values)[offset : offset + limit]
+    return list(islice(values, offset, offset + limit))
 
 
 def _address(api: Any, value: str) -> Any:
@@ -86,17 +87,15 @@ def register_listing_tools(registry: ToolRegistry, workspace: ProgramWorkspace) 
         api = workspace.get(program_id)
         resolved = _address(api, address)
         manager = api.getCurrentProgram().getReferenceManager()
-        references: list[dict[str, object]] = []
-        if direction in {"from", "both"}:
-            references.extend(
-                _reference_json(reference, "from")
-                for reference in manager.getReferencesFrom(resolved)
-            )
-        if direction in {"to", "both"}:
-            references.extend(
-                _reference_json(reference, "to") for reference in manager.getReferencesTo(resolved)
-            )
-        return references[:limit]
+        def references() -> Iterable[dict[str, object]]:
+            if direction in {"from", "both"}:
+                for reference in manager.getReferencesFrom(resolved):
+                    yield _reference_json(reference, "from")
+            if direction in {"to", "both"}:
+                for reference in manager.getReferencesTo(resolved):
+                    yield _reference_json(reference, "to")
+
+        return list(islice(references(), limit))
 
     def strings_list(
         program_id: str, contains: str | None = None, offset: int = 0, limit: int = 100

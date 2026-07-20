@@ -46,6 +46,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     GHIDRA_MCP_HOST=0.0.0.0 \
     GHIDRA_MCP_PORT=8765 \
     GHIDRA_MCP_STORAGE_ROOT=/data/projects \
+    GHIDRA_MCP_INPUT_ROOT=/data/input \
     PATH=/opt/venv/bin:$PATH
 
 RUN apt-get update \
