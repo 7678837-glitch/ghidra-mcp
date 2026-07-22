@@ -1,0 +1,137 @@
+# Ghidra MCP
+
+[English](README.md)
+
+面向 headless 逆向分析的单进程 MCP 服务。Python 进程通过 PyGhidra 启动 JVM、管理持久化 Ghidra 项目，并向 AI 客户端暴露 35 个任务导向工具。
+
+> 安全支持基线是 Ghidra 12.1.2+。Streamable HTTP 必须配置 Bearer token；跨主机部署还必须在可信反向代理终止 TLS。
+
+## 项目状态
+
+项目原创代码采用 Apache License 2.0。Ghidra、PyGhidra、MCP SDK 及其他第三方组件继续适用各自许可证。
+
+本服务适合受控环境中的 headless 静态分析，不是多租户沙箱。Ghidra 会解析不受信任二进制，HTTP token 持有者可以调用分析和写入工具。部署时应使用隔离容器、只读输入挂载、独立持久卷和最小网络权限。
+
+## 容器镜像
+
+仓库包含 GitHub Actions 发布流程：每次推送 `main` 后，以 `linux/amd64`、`--no-cache` 构建镜像，向 GHCR 推送版本标签和 `latest`，再按远端 digest 拉回，并核验 `/health` 中的版本与 Git commit。
+
+首次发布并把 GHCR package 可见性设为 public 后，可匿名拉取：
+
+```bash
+docker pull ghcr.io/xjoker/ghidra-mcp:latest
+```
+
+GHCR 新建容器 package 默认可能是 private。Workflow 成功不等于已经能匿名下载，必须再用未登录环境执行 `docker pull` 验证。
+
+启动服务：
+
+```bash
+docker volume create ghidra-mcp-projects
+(
+read -rsp 'Ghidra MCP token: ' GHIDRA_MCP_AUTH_TOKEN && echo
+export GHIDRA_MCP_AUTH_TOKEN
+docker run -d --name ghidra-mcp \
+  --platform linux/amd64 \
+  -p 127.0.0.1:8765:8765 \
+  -e GHIDRA_MCP_PUBLIC_URL=http://127.0.0.1:8765 \
+  -e GHIDRA_MCP_AUTH_TOKEN \
+  -v ghidra-mcp-projects:/data/projects \
+  -v /absolute/path/to/binaries:/data/input:ro \
+  ghcr.io/xjoker/ghidra-mcp:latest
+)
+```
+
+隐藏输入可避免 token 值进入 shell history。拥有 Docker daemon 权限的用户仍可查看容器环境变量，因此必须限制 daemon 访问。
+
+客户端连接 `http://127.0.0.1:8765/mcp` 并发送 `Authorization: Bearer <token>`。公开健康检查位于 `http://127.0.0.1:8765/health`。
+
+从源码构建时，把 `<VERSION>` 替换为根目录 `VERSION` 文件的值：
+
+```bash
+docker buildx build \
+  --platform linux/amd64 \
+  --no-cache \
+  --load \
+  --build-arg GIT_COMMIT=<完整 Git commit> \
+  --build-arg VERSION=<VERSION> \
+  -t ghidra-mcp:<VERSION> .
+```
+
+## 本地 stdio
+
+前置条件：Python 3.11+、Ghidra 12.1.2+、`uv` 和可写的项目目录。
+
+```bash
+uv sync --locked
+cp .env.example .env
+GHIDRA_INSTALL_DIR=/absolute/path/to/ghidra \
+  GHIDRA_MCP_TRANSPORT=stdio \
+  uv run ghidra-mcp
+```
+
+MCP 客户端应自行拉起 stdio 进程。等价通用配置如下：
+
+```json
+{
+  "mcpServers": {
+    "ghidra": {
+      "command": "uv",
+      "args": ["--directory", "/absolute/path/to/ghidra-mcp", "run", "ghidra-mcp"],
+      "env": {
+        "GHIDRA_INSTALL_DIR": "/absolute/path/to/ghidra",
+        "GHIDRA_MCP_TRANSPORT": "stdio"
+      }
+    }
+  }
+}
+```
+
+不同客户端的字段名和配置位置可能不同。Streamable HTTP 客户端需要配置 `/mcp` URL 和 Bearer header。本项目不暴露 Ghidra GUI 自动化。
+
+## 配置
+
+优先级为环境变量 > `.env` > TOML > 默认值。默认 TOML 位于 `data/config/default.toml`。
+
+| 环境变量 | 默认值 | 说明 |
+|---|---:|---|
+| `GHIDRA_INSTALL_DIR` | 无 | Ghidra 安装目录；必填 |
+| `GHIDRA_MCP_ANALYSIS_TIMEOUT_SECONDS` | `300` | 自动分析期限，范围 1–3600 秒 |
+| `GHIDRA_MCP_TRANSPORT` | `stdio` | `stdio` 或 `streamable-http` |
+| `GHIDRA_MCP_HOST` | `127.0.0.1` | HTTP 监听地址 |
+| `GHIDRA_MCP_PORT` | `8765` | HTTP 端口，范围 1–65535 |
+| `GHIDRA_MCP_PUBLIC_URL` | 无 | HTTP 模式必填，客户端实际访问的 HTTP(S) 根 URL |
+| `GHIDRA_MCP_STORAGE_ROOT` | `data/projects` | Ghidra 项目持久化目录 |
+| `GHIDRA_MCP_INPUT_ROOT` | 无 | HTTP 模式输入边界，符号链接不能越界 |
+| `GHIDRA_MCP_AUTH_TOKEN` | 无 | HTTP 模式必填，至少 32 个 UTF-8 字节 |
+
+公开 URL 不能包含 wildcard host、用户信息、查询参数或路径前缀。敏感值只从环境变量或未跟踪 `.env` 读取；不要把真实 token 写入 TOML、日志、命令历史或 Git。
+
+## 文档
+
+- [使用指南](docs/usage.zh-CN.md) · [English](docs/usage.md)
+- [工具目录](docs/tools.md)
+- [运维指南](docs/operations.md)
+- [验证证据](docs/verification.md)
+- [行为规格](docs/specification.md)
+- [净室章程](CLEANROOM.md)
+- [贡献指南](CONTRIBUTING.md)
+- [安全政策](SECURITY.md)
+
+现有专项文档将逐步翻译；英文 README 与英文使用指南是主要公开入口，中文 README 与中文使用指南保持独立完整。
+
+## 开发
+
+当前只支持源码安装和本地构建，尚未声明 PyPI 发布渠道。
+
+```bash
+uv sync --locked --extra dev
+uv run --locked pytest -m 'not integration' -q
+uv run --locked ruff check src tests scripts
+```
+
+夹具生成与真实 Ghidra 集成测试见 [贡献指南](CONTRIBUTING.md)。
+
+## 许可证
+
+项目原创代码采用 [Apache License 2.0](LICENSE)，归属声明见 [NOTICE](NOTICE)。第三方组件适用各自许可证。

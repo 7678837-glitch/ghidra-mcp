@@ -1,5 +1,11 @@
 # 变更记录
 
+## 20260722.5
+
+- 增加固定 Action commit SHA 的 GHCR 自动发布流程：`main` push 后无缓存构建 `linux/amd64`，发布版本与 `latest` 标签，并按远端 digest 验证健康元数据。
+- README 改为英文主入口并增加独立中文版本；新增互相链接的英文与中文使用指南。
+- 补充 Python 包的 README 和项目、Issue、容器地址元数据。
+
 ## 20260722.4
 
 - 项目原创代码采用 Apache License 2.0，并将标准许可证与 `xjoker` 归属声明纳入源码包、wheel 和容器镜像。

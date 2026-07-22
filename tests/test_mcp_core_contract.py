@@ -190,6 +190,12 @@ def test_runtime_version_uses_package_metadata_built_from_root_version(
     assert pyproject["tool"]["hatch"]["version"]["path"] == "VERSION"
     assert pyproject["project"]["license"] == "Apache-2.0"
     assert pyproject["project"]["license-files"] == ["LICENSE", "NOTICE"]
+    assert pyproject["project"]["readme"] == "README.md"
+    assert pyproject["project"]["urls"] == {
+        "Homepage": "https://github.com/xjoker/ghidra-mcp",
+        "Issues": "https://github.com/xjoker/ghidra-mcp/issues",
+        "Container": "https://github.com/xjoker/ghidra-mcp/pkgs/container/ghidra-mcp",
+    }
     assert (root / "LICENSE").is_file()
     assert (root / "NOTICE").read_text(encoding="utf-8").startswith(
         "Ghidra MCP\nCopyright 2026 xjoker\n"

@@ -1,0 +1,136 @@
+name: Publish container
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: publish-container-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Read and validate version
+        id: version
+        shell: bash
+        run: |
+          VERSION="$(tr -d '\r\n' < VERSION)"
+          [[ "$VERSION" =~ ^[0-9]{8}\.[1-9][0-9]*$ ]]
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Test source and prepare smoke fixture
+        id: source
+        shell: bash
+        run: |
+          python3 -m venv .ci-venv
+          .ci-venv/bin/pip install uv==0.8.0
+          .ci-venv/bin/uv sync --locked --extra dev
+          .ci-venv/bin/uv run pytest -m 'not integration'
+          .ci-venv/bin/uv run ruff check .
+          EXPECTED_SCHEMA="$(.ci-venv/bin/uv run python -c 'from pathlib import Path; from ghidra_mcp.catalog import build_default_registry; from ghidra_mcp.runtime import GhidraRuntime, ProgramWorkspace; from ghidra_mcp.server import _schema_version; print(_schema_version(build_default_registry(ProgramWorkspace(GhidraRuntime(Path("/tmp/unused-ghidra"))))))')"
+          [[ "$EXPECTED_SCHEMA" =~ ^[0-9a-f]{16}$ ]]
+          echo "schema=$EXPECTED_SCHEMA" >> "$GITHUB_OUTPUT"
+          mkdir .ci-fixtures
+          cc -shared -fPIC -g -o .ci-fixtures/libsymbolic.so tests/fixtures/src/symbolic.c
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Refuse to overwrite a released version
+        shell: bash
+        run: |
+          if INSPECT_ERROR="$(docker manifest inspect \
+            "${IMAGE_NAME}:${{ steps.version.outputs.value }}" 2>&1)"; then
+            echo "Version tag already exists: ${IMAGE_NAME}:${{ steps.version.outputs.value }}" >&2
+            exit 1
+          fi
+          if ! grep -Eqi 'manifest unknown|not found' <<<"$INSPECT_ERROR"; then
+            echo "Could not prove that the version tag is unused:" >&2
+            printf '%s\n' "$INSPECT_ERROR" >&2
+            exit 1
+          fi
+
+      - name: Build and publish commit candidate
+        id: image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: .
+          platforms: linux/amd64
+          no-cache: true
+          push: true
+          provenance: true
+          sbom: true
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+            VERSION=${{ steps.version.outputs.value }}
+          tags: |
+            ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.version.outputs.value }}
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Verify the candidate digest
+        shell: bash
+        run: |
+          docker pull "${IMAGE_NAME}@${{ steps.image.outputs.digest }}"
+          TOKEN="$(openssl rand -hex 32)"
+          docker run -d --name ghidra-mcp-ci --network host \
+            -e GHIDRA_MCP_PUBLIC_URL=http://127.0.0.1:8765 \
+            -e GHIDRA_MCP_AUTH_TOKEN="$TOKEN" \
+            -v "${GITHUB_WORKSPACE}/.ci-fixtures:/data/input:ro" \
+            "${IMAGE_NAME}@${{ steps.image.outputs.digest }}"
+          HEALTH=""
+          for attempt in $(seq 1 30); do
+            HEALTH="$(curl -fsS http://127.0.0.1:8765/health || true)"
+            if [ -n "$HEALTH" ]; then
+              python3 -c 'import json,sys; data=json.loads(sys.argv[4]); assert data == {"status": "ok", "version": sys.argv[1], "git_commit": sys.argv[2], "schema_version": sys.argv[3]}' \
+                "${{ steps.version.outputs.value }}" "${{ github.sha }}" \
+                "${{ steps.source.outputs.schema }}" "$HEALTH"
+              break
+            fi
+            sleep 2
+          done
+          if [ -z "$HEALTH" ]; then
+            docker logs ghidra-mcp-ci
+            exit 1
+          fi
+          GHIDRA_MCP_CONTAINER_URL=http://127.0.0.1:8765/mcp \
+            GHIDRA_MCP_CONTAINER_TOKEN="$TOKEN" \
+            .ci-venv/bin/uv run pytest tests/integration/test_container_mcp.py
+
+      - name: Promote verified digest
+        shell: bash
+        run: |
+          docker buildx imagetools create \
+            --tag "${IMAGE_NAME}:${{ steps.version.outputs.value }}" \
+            --tag "${IMAGE_NAME}:latest" \
+            "${IMAGE_NAME}@${{ steps.image.outputs.digest }}"
+          VERSION_DIGEST="$(docker buildx imagetools inspect \
+            "${IMAGE_NAME}:${{ steps.version.outputs.value }}" \
+            --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          test "$VERSION_DIGEST" = "${{ steps.image.outputs.digest }}"
+
+      - name: Remove verification container
+        if: always()
+        run: docker rm -f ghidra-mcp-ci 2>/dev/null || true

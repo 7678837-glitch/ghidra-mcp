@@ -69,7 +69,12 @@ COPY VERSION /app/VERSION
 COPY LICENSE NOTICE /app/
 
 ARG GIT_COMMIT=unknown
+ARG VERSION=unknown
 ENV GHIDRA_MCP_GIT_COMMIT=$GIT_COMMIT
+LABEL org.opencontainers.image.source="https://github.com/xjoker/ghidra-mcp" \
+      org.opencontainers.image.revision="$GIT_COMMIT" \
+      org.opencontainers.image.version="$VERSION" \
+      org.opencontainers.image.licenses="Apache-2.0"
 
 USER ghidra-mcp
 VOLUME ["/data/projects", "/data/input"]

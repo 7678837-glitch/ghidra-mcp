@@ -1,49 +1,66 @@
 # Ghidra MCP
 
-面向 headless 逆向分析的单进程 MCP 服务。Python 进程通过 PyGhidra 启动 JVM、管理持久化 Ghidra 项目，并向 AI 客户端暴露 35 个任务导向工具。
+[简体中文](README.zh-CN.md)
 
-> 安全支持基线是 Ghidra 12.1.2+，不是所有历史版本。Streamable HTTP 必须配置 Bearer token；跨主机部署还必须在服务前终止 TLS。
+A single-process MCP server for headless reverse engineering. One Python process starts the JVM through PyGhidra, manages persistent Ghidra projects, and exposes 35 task-oriented tools to AI clients.
 
-## 项目状态
+> The security baseline is Ghidra 12.1.2 or later. Streamable HTTP requires a Bearer token, and deployments beyond the local host must terminate TLS at a trusted reverse proxy.
 
-本项目代码采用 Apache License 2.0。Ghidra、PyGhidra、MCP SDK 及其他第三方组件继续适用各自的许可证；本项目许可证不改变第三方组件的授权条款。
+## Project status
 
-本项目适合受控环境中的 headless 静态分析，不是多租户沙箱：Ghidra 会解析不受信任的二进制，HTTP token 持有者可以调用分析及写入类工具。部署时应使用隔离容器、只读输入挂载、独立持久卷和最小网络权限。
+The project source is licensed under Apache License 2.0. Ghidra, PyGhidra, the MCP SDK, and other third-party components remain under their respective licenses.
 
-## 使用 Docker 启动
+This service is intended for controlled headless analysis, not as a multi-tenant sandbox. Ghidra parses untrusted binaries, and an HTTP token holder can invoke analysis and mutation tools. Use an isolated container, a read-only input mount, a dedicated persistent volume, and minimal network access.
 
-从仓库根目录构建固定为 `linux/amd64` 的镜像：
+## Container image
 
-下列 `<VERSION>` 使用根目录 `VERSION` 文件中的值。
+The repository contains a GitHub Actions workflow that builds `linux/amd64` with `--no-cache` after every push to `main`, publishes versioned and `latest` tags to GHCR, pulls the published digest, and verifies `/health` against the source version and commit.
+
+Once the GHCR package has been published and its visibility is set to public, pull it without authentication:
+
+```bash
+docker pull ghcr.io/xjoker/ghidra-mcp:latest
+```
+
+GHCR creates new container packages as private by default. A successful workflow alone does not prove anonymous availability; verify it with an unauthenticated pull.
+
+Run the image with persistent projects and a read-only input directory:
+
+```bash
+docker volume create ghidra-mcp-projects
+(
+read -rsp 'Ghidra MCP token: ' GHIDRA_MCP_AUTH_TOKEN && echo
+export GHIDRA_MCP_AUTH_TOKEN
+docker run -d --name ghidra-mcp \
+  --platform linux/amd64 \
+  -p 127.0.0.1:8765:8765 \
+  -e GHIDRA_MCP_PUBLIC_URL=http://127.0.0.1:8765 \
+  -e GHIDRA_MCP_AUTH_TOKEN \
+  -v ghidra-mcp-projects:/data/projects \
+  -v /absolute/path/to/binaries:/data/input:ro \
+  ghcr.io/xjoker/ghidra-mcp:latest
+)
+```
+
+The hidden prompt keeps the token value out of shell history. Anyone with Docker daemon access can still inspect container environment variables; restrict daemon access accordingly.
+
+Connect to `http://127.0.0.1:8765/mcp` with `Authorization: Bearer <token>`. The public health endpoint is `http://127.0.0.1:8765/health`.
+
+To build from source, replace `<VERSION>` with the value in the root `VERSION` file:
 
 ```bash
 docker buildx build \
   --platform linux/amd64 \
   --no-cache \
   --load \
-  --build-arg GIT_COMMIT=<完整 Git commit> \
+  --build-arg GIT_COMMIT=<full Git commit> \
+  --build-arg VERSION=<VERSION> \
   -t ghidra-mcp:<VERSION> .
 ```
 
-创建持久卷并仅监听本机回环地址：
+## Local stdio
 
-```bash
-docker volume create ghidra-mcp-projects
-docker run --name ghidra-mcp \
-  --platform linux/amd64 \
-  -p 127.0.0.1:8765:8765 \
-  -e GHIDRA_MCP_PUBLIC_URL=http://127.0.0.1:8765 \
-  -e GHIDRA_MCP_AUTH_TOKEN='<随机长 token>' \
-  -v ghidra-mcp-projects:/data/projects \
-  -v /absolute/path/to/binaries:/data/input:ro \
-  ghidra-mcp:<VERSION>
-```
-
-客户端连接 `http://127.0.0.1:8765/mcp`，并发送 `Authorization: Bearer <token>`。公开健康检查位于 `http://127.0.0.1:8765/health`。
-
-## 本地 stdio 启动
-
-前置条件：Python 3.11+、Ghidra 12.1.2+，以及可写的项目数据目录。
+Requirements: Python 3.11+, Ghidra 12.1.2+, `uv`, and a writable project directory.
 
 ```bash
 uv sync --locked
@@ -53,9 +70,7 @@ GHIDRA_INSTALL_DIR=/absolute/path/to/ghidra \
   uv run ghidra-mcp
 ```
 
-stdio 模式用于同机 MCP 客户端，不要求 token。服务退出时会关闭仍由当前进程持有的程序会话。
-
-MCP 客户端应直接拉起 stdio 进程，而不是要求用户先在另一个终端常驻启动。不同客户端的配置文件位置不同，等价配置结构如下：
+An MCP client should launch the stdio process itself. The equivalent generic configuration is:
 
 ```json
 {
@@ -77,52 +92,51 @@ MCP 客户端应直接拉起 stdio 进程，而不是要求用户先在另一个
 }
 ```
 
-若客户端使用 Streamable HTTP，则连接 `/mcp` URL 并设置 `Authorization: Bearer <token>`。本服务不暴露 Ghidra GUI 自动化能力。
+Field names and configuration locations vary by client. For Streamable HTTP, configure the `/mcp` URL and the Bearer authorization header. This project does not expose Ghidra GUI automation.
 
-## 配置
+## Configuration
 
-优先级固定为：环境变量 > `.env` > TOML > 默认值。默认 TOML 位于 `data/config/default.toml`。
+Precedence is environment variables > `.env` > TOML > defaults. The default TOML file is `data/config/default.toml`.
 
-| 环境变量 | 默认值 | 说明 |
+| Variable | Default | Purpose |
 |---|---:|---|
-| `GHIDRA_INSTALL_DIR` | 无 | Ghidra 安装目录；必填 |
-| `GHIDRA_MCP_ANALYSIS_TIMEOUT_SECONDS` | `300` | 自动分析期限，范围 1–3600 秒；超时会取消并回滚本次分析 |
-| `GHIDRA_MCP_TRANSPORT` | `stdio` | `stdio` 或 `streamable-http` |
-| `GHIDRA_MCP_HOST` | `127.0.0.1` | HTTP 监听地址 |
-| `GHIDRA_MCP_PORT` | `8765` | HTTP 监听端口，范围 1–65535 |
-| `GHIDRA_MCP_PUBLIC_URL` | 无 | HTTP 模式必填；客户端实际访问的 HTTP(S) 根 URL，用于鉴权发现元数据 |
-| `GHIDRA_MCP_STORAGE_ROOT` | `data/projects` | Ghidra 项目持久化目录 |
-| `GHIDRA_MCP_INPUT_ROOT` | 无 | HTTP 模式必填；`program_open` 只能读取该目录内文件，符号链接也不能越界 |
-| `GHIDRA_MCP_AUTH_TOKEN` | 无 | HTTP 模式必填且至少 32 个 UTF-8 字节，不允许首尾空白；仅从环境变量或 `.env` 读取 |
+| `GHIDRA_INSTALL_DIR` | none | Required Ghidra installation directory |
+| `GHIDRA_MCP_ANALYSIS_TIMEOUT_SECONDS` | `300` | Auto-analysis deadline, from 1 to 3600 seconds |
+| `GHIDRA_MCP_TRANSPORT` | `stdio` | `stdio` or `streamable-http` |
+| `GHIDRA_MCP_HOST` | `127.0.0.1` | HTTP listen address |
+| `GHIDRA_MCP_PORT` | `8765` | HTTP port, from 1 to 65535 |
+| `GHIDRA_MCP_PUBLIC_URL` | none | Required HTTP(S) root URL seen by clients in HTTP mode |
+| `GHIDRA_MCP_STORAGE_ROOT` | `data/projects` | Persistent Ghidra project directory |
+| `GHIDRA_MCP_INPUT_ROOT` | none | Required HTTP input boundary; symlinks cannot escape it |
+| `GHIDRA_MCP_AUTH_TOKEN` | none | Required HTTP token of at least 32 UTF-8 bytes |
 
-`GHIDRA_MCP_PUBLIC_URL` 不得使用 `0.0.0.0`/`::`、用户信息、查询参数或路径前缀；反向代理部署时填写客户端看到的 HTTPS 根 URL。未知 TOML 节或键会立即报错。不要把真实 token 写入 TOML、命令历史、日志或 Git。
+The public URL cannot contain a wildcard host, user information, query string, or path prefix. Secrets are accepted only from environment variables or an untracked `.env`; do not put real tokens in TOML, logs, shell history, or Git.
 
-## 文档
+## Documentation
 
-- [工具目录](docs/tools.md)：35 个默认工具及选择边界。
-- [运维指南](docs/operations.md)：部署、健康检查、备份恢复与故障处理。
-- [验证证据](docs/verification.md)：真实 `.so`、Ghidra 版本和可复现命令。
-- [行为规格](docs/specification.md)：产品边界和硬性契约。
-- [净室章程](CLEANROOM.md)：允许来源、禁止输入和发布边界。
-- [贡献指南](CONTRIBUTING.md)：开发环境、净室要求、测试和提交范围。
-- [安全政策](SECURITY.md)：支持边界、漏洞报告方式和部署责任。
+- [Usage guide](docs/usage.md) · [简体中文](docs/usage.zh-CN.md)
+- [Tool catalog](docs/tools.md)
+- [Operations guide](docs/operations.md)
+- [Verification evidence](docs/verification.md)
+- [Behavior specification](docs/specification.md)
+- [Clean-room charter](CLEANROOM.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
 
-## 开发验证
+The existing specialist documents are being translated progressively; the English README and usage guide are the primary public entry points.
 
-当前项目仅支持从源码安装和本地构建，尚未声明 PyPI 发布渠道。完整开发环境和贡献要求见 [贡献指南](CONTRIBUTING.md)。
+## Development
+
+The project currently supports source installation and local builds; no PyPI distribution is declared.
 
 ```bash
 uv sync --locked --extra dev
 uv run --locked pytest -m 'not integration' -q
 uv run --locked ruff check src tests scripts
-python scripts/build_fixtures.py
-GHIDRA_INSTALL_DIR=/absolute/path/to/ghidra \
-  _JAVA_OPTIONS=-Duser.home=/tmp/ghidra-mcp-java-home \
-  uv run --locked pytest tests/integration/test_real_ghidra.py -q -s
 ```
 
-容器端到端验证命令见 [验证证据](docs/verification.md)。
+See [CONTRIBUTING.md](CONTRIBUTING.md) for fixture generation and real Ghidra integration tests.
 
-## 许可证
+## License
 
-项目代码采用 [Apache License 2.0](LICENSE)，归属声明见 [NOTICE](NOTICE)。第三方组件适用各自随附的许可证。
+Project source is available under the [Apache License 2.0](LICENSE). Attribution is recorded in [NOTICE](NOTICE). Third-party components remain under their own licenses.

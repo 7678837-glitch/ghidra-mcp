@@ -32,4 +32,43 @@ def test_container_context_excludes_repository_and_local_secrets() -> None:
 
     assert ".git" in ignored
     assert ".env" in ignored
+    assert ".ci-venv" in ignored
+    assert ".ci-fixtures" in ignored
     assert "tests/fixtures/generated" in ignored
+
+
+def test_main_push_publishes_pinned_linux_amd64_image_to_ghcr() -> None:
+    workflow = (ROOT / ".github/workflows/publish-container.yml").read_text(encoding="utf-8")
+
+    assert "branches: [main]" in workflow
+    assert "workflow_dispatch" not in workflow
+    assert "packages: write" in workflow
+    assert "ghcr.io/${{ github.repository }}" in workflow
+    assert "platforms: linux/amd64" in workflow
+    assert "no-cache: true" in workflow
+    assert "push: true" in workflow
+    assert "pytest -m 'not integration'" in workflow
+    assert "ruff check ." in workflow
+    assert "EXPECTED_SCHEMA=" in workflow
+    assert "tests/fixtures/src/symbolic.c" in workflow
+    assert "tests/integration/test_container_mcp.py" in workflow
+    assert "GIT_COMMIT=${{ github.sha }}" in workflow
+    assert "VERSION=${{ steps.version.outputs.value }}" in workflow
+    assert "${{ env.IMAGE_NAME }}:sha-${{ github.sha }}" in workflow
+    assert "Refuse to overwrite a released version" in workflow
+    assert "docker manifest inspect" in workflow
+    assert "manifest unknown|not found" in workflow
+    assert "Could not prove that the version tag is unused" in workflow
+    assert "Promote verified digest" in workflow
+    assert '"${IMAGE_NAME}:${{ steps.version.outputs.value }}"' in workflow
+    assert '"${IMAGE_NAME}:latest"' in workflow
+    assert '"${IMAGE_NAME}@${{ steps.image.outputs.digest }}"' in workflow
+    assert "provenance: true" in workflow
+    assert "sbom: true" in workflow
+    assert 'data == {"status": "ok"' in workflow
+    assert '"schema_version": sys.argv[3]' in workflow
+    assert "if: always()" in workflow
+    assert "@11d5960a326750d5838078e36cf38b85af677262" in workflow
+    assert "@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f" in workflow
+    assert "@c94ce9fb468520275223c153574b00df6fe4bcc9" in workflow
+    assert "@10e90e3645eae34f1e60eeb005ba3a3d33f178e8" in workflow
