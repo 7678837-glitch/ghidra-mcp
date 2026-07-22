@@ -148,6 +148,37 @@ def test_streamable_http_requires_an_explicit_valid_public_url(tmp_path: Path) -
     assert settings.public_url == "https://mcp.example"
 
 
+@pytest.mark.parametrize(
+    "public_url",
+    [
+        "http://[0:0:0:0:0:0:0:0]",
+        "http://0",
+        "http://0x0",
+        "http://0000",
+        "http://0.0.0.0.",
+    ],
+)
+def test_public_url_rejects_semantically_unspecified_hosts(public_url: str) -> None:
+    from ghidra_mcp.config import ConfigurationError, normalize_http_public_url
+
+    with pytest.raises(ConfigurationError, match="GHIDRA_MCP_PUBLIC_URL"):
+        normalize_http_public_url(public_url)
+
+
+@pytest.mark.parametrize(
+    ("public_url", "expected"),
+    [
+        ("http://127.0.0.1", "http://127.0.0.1"),
+        ("https://mcp.example", "https://mcp.example"),
+        ("http://[2001:db8::1]:8765", "http://[2001:db8::1]:8765"),
+    ],
+)
+def test_public_url_accepts_specific_ip_and_domain_hosts(public_url: str, expected: str) -> None:
+    from ghidra_mcp.config import normalize_http_public_url
+
+    assert normalize_http_public_url(public_url) == expected
+
+
 def test_auth_token_is_loaded_from_dotenv_but_never_exposed_by_repr(tmp_path: Path) -> None:
     from ghidra_mcp.config import load_settings
 

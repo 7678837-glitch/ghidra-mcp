@@ -175,12 +175,15 @@ class FakePyGhidra:
         self.analysis_calls: list[object] = []
         self.cancel_analysis = False
         self.cancel_after_analysis = False
+        self.on_task_monitor = None
 
     def start(self, *, install_dir: Path) -> object:
         self.start_calls.append(install_dir)
         return object()
 
     def task_monitor(self, timeout: int | None = None) -> object:
+        if self.on_task_monitor is not None:
+            self.on_task_monitor()
         if timeout is not None:
             self.analysis_timeouts.append(timeout)
         return type(
@@ -288,6 +291,28 @@ def test_runtime_accepts_pyghidra_normal_completion_cancellation(tmp_path: Path)
     )
 
     runtime.analyze(object())
+
+
+def test_runtime_deadline_includes_monitor_construction_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import ghidra_mcp.runtime as runtime_module
+
+    install_dir = tmp_path / "ghidra"
+    write_ghidra_version(install_dir)
+    fake = FakePyGhidra()
+    fake.cancel_analysis = True
+    runtime = runtime_module.GhidraRuntime(
+        install_dir=install_dir,
+        pyghidra_module=fake,
+        analysis_timeout_seconds=10,
+    )
+    clock = iter([0, 5, 10])
+    monkeypatch.setattr(runtime_module, "monotonic", lambda: next(clock))
+    fake.on_task_monitor = runtime_module.monotonic
+
+    with pytest.raises(TimeoutError, match="10"):
+        runtime.analyze(object())
 
 
 @pytest.mark.parametrize("version", ["12.0.4", "12.1.0", "12.1.1"])

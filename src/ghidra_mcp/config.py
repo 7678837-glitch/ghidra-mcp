@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from ipaddress import ip_address
 from pathlib import Path
+from socket import inet_aton
 from typing import Mapping
 import os
 import tomllib
@@ -99,10 +101,11 @@ def normalize_http_public_url(value: str | None) -> str:
         port = parsed.port
     except ValueError as error:
         raise ConfigurationError("GHIDRA_MCP_PUBLIC_URL 必须是有效的 HTTP(S) 根 URL") from error
+    hostname = parsed.hostname
     if (
         parsed.scheme not in {"http", "https"}
-        or parsed.hostname is None
-        or parsed.hostname in {"0.0.0.0", "::"}
+        or hostname is None
+        or _is_unspecified_host(hostname)
         or parsed.username is not None
         or parsed.password is not None
         or parsed.path not in {"", "/"}
@@ -117,6 +120,17 @@ def normalize_http_public_url(value: str | None) -> str:
     if port is not None:
         normalized = f"{normalized}:{port}"
     return normalized
+
+
+def _is_unspecified_host(hostname: str) -> bool:
+    candidate = hostname.removesuffix(".")
+    try:
+        return ip_address(candidate).is_unspecified
+    except ValueError:
+        try:
+            return inet_aton(candidate) == b"\0\0\0\0"
+        except OSError:
+            return False
 
 
 def load_settings(

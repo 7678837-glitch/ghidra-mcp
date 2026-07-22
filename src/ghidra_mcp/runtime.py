@@ -78,8 +78,8 @@ class GhidraRuntime:
 
     def analyze(self, program: Any) -> None:
         self.ensure_started()
-        monitor = self.pyghidra.task_monitor(self.analysis_timeout_seconds)
         deadline = monotonic() + self.analysis_timeout_seconds
+        monitor = self.pyghidra.task_monitor(self.analysis_timeout_seconds)
         self.pyghidra.analyze(program, monitor=monitor)
         if monitor.isCancelled() and monotonic() >= deadline:
             raise TimeoutError(f"Ghidra 自动分析超过 {self.analysis_timeout_seconds} 秒")
