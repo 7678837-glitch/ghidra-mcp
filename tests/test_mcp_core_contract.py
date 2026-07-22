@@ -181,12 +181,19 @@ def test_runtime_version_uses_package_metadata_built_from_root_version(
 ) -> None:
     import ghidra_mcp.server as server
 
+    root = Path(__file__).parents[1]
     pyproject = tomllib.loads(
-        (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+        (root / "pyproject.toml").read_text(encoding="utf-8")
     )
     assert "version" not in pyproject["project"]
     assert "version" in pyproject["project"]["dynamic"]
     assert pyproject["tool"]["hatch"]["version"]["path"] == "VERSION"
+    assert pyproject["project"]["license"] == "Apache-2.0"
+    assert pyproject["project"]["license-files"] == ["LICENSE", "NOTICE"]
+    assert (root / "LICENSE").is_file()
+    assert (root / "NOTICE").read_text(encoding="utf-8").startswith(
+        "Ghidra MCP\nCopyright 2026 xjoker\n"
+    )
 
     monkeypatch.setattr(server, "package_version", lambda _: "package-metadata-version")
 

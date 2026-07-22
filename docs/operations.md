@@ -10,6 +10,8 @@
 
 ## 启动与健康检查
 
+下列 `<VERSION>` 使用根目录 `VERSION` 文件中的值。
+
 ```bash
 docker run -d --name ghidra-mcp \
   --platform linux/amd64 \
@@ -18,7 +20,7 @@ docker run -d --name ghidra-mcp \
   -e GHIDRA_MCP_AUTH_TOKEN='<随机长 token>' \
   -v ghidra-mcp-projects:/data/projects \
   -v /absolute/path/to/binaries:/data/input:ro \
-  ghidra-mcp:20260722.3
+  ghidra-mcp:<VERSION>
 curl -fsS http://127.0.0.1:8765/health
 ```
 
@@ -27,7 +29,7 @@ curl -fsS http://127.0.0.1:8765/health
 ```json
 {
   "status": "ok",
-  "version": "20260722.3",
+  "version": "<VERSION>",
   "git_commit": "<完整 Git commit>",
   "schema_version": "<16 位十六进制摘要>"
 }

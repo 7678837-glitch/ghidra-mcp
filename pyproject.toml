@@ -6,6 +6,8 @@ build-backend = "hatchling.build"
 name = "ghidra-mcp"
 dynamic = ["version"]
 description = "Single-process MCP server for headless Ghidra automation"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.11"
 dependencies = [
   "mcp>=1.12,<2",

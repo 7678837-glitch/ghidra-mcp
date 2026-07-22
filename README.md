@@ -4,9 +4,17 @@
 
 > 安全支持基线是 Ghidra 12.1.2+，不是所有历史版本。Streamable HTTP 必须配置 Bearer token；跨主机部署还必须在服务前终止 TLS。
 
+## 项目状态
+
+本项目代码采用 Apache License 2.0。Ghidra、PyGhidra、MCP SDK 及其他第三方组件继续适用各自的许可证；本项目许可证不改变第三方组件的授权条款。
+
+本项目适合受控环境中的 headless 静态分析，不是多租户沙箱：Ghidra 会解析不受信任的二进制，HTTP token 持有者可以调用分析及写入类工具。部署时应使用隔离容器、只读输入挂载、独立持久卷和最小网络权限。
+
 ## 使用 Docker 启动
 
 从仓库根目录构建固定为 `linux/amd64` 的镜像：
+
+下列 `<VERSION>` 使用根目录 `VERSION` 文件中的值。
 
 ```bash
 docker buildx build \
@@ -14,7 +22,7 @@ docker buildx build \
   --no-cache \
   --load \
   --build-arg GIT_COMMIT=<完整 Git commit> \
-  -t ghidra-mcp:20260722.3 .
+  -t ghidra-mcp:<VERSION> .
 ```
 
 创建持久卷并仅监听本机回环地址：
@@ -28,7 +36,7 @@ docker run --name ghidra-mcp \
   -e GHIDRA_MCP_AUTH_TOKEN='<随机长 token>' \
   -v ghidra-mcp-projects:/data/projects \
   -v /absolute/path/to/binaries:/data/input:ro \
-  ghidra-mcp:20260722.3
+  ghidra-mcp:<VERSION>
 ```
 
 客户端连接 `http://127.0.0.1:8765/mcp`，并发送 `Authorization: Bearer <token>`。公开健康检查位于 `http://127.0.0.1:8765/health`。
@@ -46,6 +54,30 @@ GHIDRA_INSTALL_DIR=/absolute/path/to/ghidra \
 ```
 
 stdio 模式用于同机 MCP 客户端，不要求 token。服务退出时会关闭仍由当前进程持有的程序会话。
+
+MCP 客户端应直接拉起 stdio 进程，而不是要求用户先在另一个终端常驻启动。不同客户端的配置文件位置不同，等价配置结构如下：
+
+```json
+{
+  "mcpServers": {
+    "ghidra": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/absolute/path/to/ghidra-mcp",
+        "run",
+        "ghidra-mcp"
+      ],
+      "env": {
+        "GHIDRA_INSTALL_DIR": "/absolute/path/to/ghidra",
+        "GHIDRA_MCP_TRANSPORT": "stdio"
+      }
+    }
+  }
+}
+```
+
+若客户端使用 Streamable HTTP，则连接 `/mcp` URL 并设置 `Authorization: Bearer <token>`。本服务不暴露 Ghidra GUI 自动化能力。
 
 ## 配置
 
@@ -72,16 +104,25 @@ stdio 模式用于同机 MCP 客户端，不要求 token。服务退出时会关
 - [验证证据](docs/verification.md)：真实 `.so`、Ghidra 版本和可复现命令。
 - [行为规格](docs/specification.md)：产品边界和硬性契约。
 - [净室章程](CLEANROOM.md)：允许来源、禁止输入和发布边界。
+- [贡献指南](CONTRIBUTING.md)：开发环境、净室要求、测试和提交范围。
+- [安全政策](SECURITY.md)：支持边界、漏洞报告方式和部署责任。
 
 ## 开发验证
 
+当前项目仅支持从源码安装和本地构建，尚未声明 PyPI 发布渠道。完整开发环境和贡献要求见 [贡献指南](CONTRIBUTING.md)。
+
 ```bash
-uv run pytest -m 'not integration' -q
-uv run ruff check src tests scripts
+uv sync --locked --extra dev
+uv run --locked pytest -m 'not integration' -q
+uv run --locked ruff check src tests scripts
 python scripts/build_fixtures.py
 GHIDRA_INSTALL_DIR=/absolute/path/to/ghidra \
   _JAVA_OPTIONS=-Duser.home=/tmp/ghidra-mcp-java-home \
-  uv run pytest tests/integration/test_real_ghidra.py -q -s
+  uv run --locked pytest tests/integration/test_real_ghidra.py -q -s
 ```
 
 容器端到端验证命令见 [验证证据](docs/verification.md)。
+
+## 许可证
+
+项目代码采用 [Apache License 2.0](LICENSE)，归属声明见 [NOTICE](NOTICE)。第三方组件适用各自随附的许可证。

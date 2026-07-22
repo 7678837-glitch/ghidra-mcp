@@ -24,6 +24,7 @@ def test_container_is_pinned_multi_stage_non_root_and_health_checked() -> None:
     assert "HEALTHCHECK" in dockerfile and "/health" in dockerfile
     assert "VOLUME" in dockerfile and "/data/projects" in dockerfile
     assert "COPY --from=" in dockerfile
+    assert "COPY LICENSE NOTICE /app/" in dockerfile
 
 
 def test_container_context_excludes_repository_and_local_secrets() -> None:

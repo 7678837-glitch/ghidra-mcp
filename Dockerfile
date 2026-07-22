@@ -27,7 +27,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && python3 -m venv /opt/build-venv
 ENV PATH=/opt/build-venv/bin:$PATH
-COPY pyproject.toml uv.lock README.md VERSION ./
+COPY pyproject.toml uv.lock README.md VERSION LICENSE NOTICE ./
 COPY src ./src
 RUN pip install --no-cache-dir --retries 5 --timeout 60 uv==0.8.0 \
     && uv export --locked --no-dev --no-emit-project --output-file requirements.txt \
@@ -66,6 +66,7 @@ RUN pip install --no-cache-dir --no-index --find-links=/tmp/wheels /tmp/dist/*.w
 
 WORKDIR /app
 COPY VERSION /app/VERSION
+COPY LICENSE NOTICE /app/
 
 ARG GIT_COMMIT=unknown
 ENV GHIDRA_MCP_GIT_COMMIT=$GIT_COMMIT
