@@ -125,7 +125,11 @@ def normalize_http_public_url(value: str | None) -> str:
 def _is_unspecified_host(hostname: str) -> bool:
     candidate = hostname.removesuffix(".")
     try:
-        return ip_address(candidate).is_unspecified
+        address = ip_address(candidate)
+        mapped_address = getattr(address, "ipv4_mapped", None)
+        return address.is_unspecified or (
+            mapped_address is not None and mapped_address.is_unspecified
+        )
     except ValueError:
         try:
             return inet_aton(candidate) == b"\0\0\0\0"

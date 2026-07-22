@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -165,12 +166,44 @@ def test_public_url_rejects_semantically_unspecified_hosts(public_url: str) -> N
         normalize_http_public_url(public_url)
 
 
+def test_unspecified_host_checks_mapped_ipv4_semantics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ghidra_mcp.config as config
+
+    mapped_zero = SimpleNamespace(is_unspecified=True)
+    python_312_address = SimpleNamespace(
+        is_unspecified=False,
+        ipv4_mapped=mapped_zero,
+    )
+    monkeypatch.setattr(config, "ip_address", lambda _: python_312_address)
+
+    assert config._is_unspecified_host("::ffff:0.0.0.0") is True
+
+
+def test_public_url_rejects_mapped_ipv4_unspecified_across_python_versions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ghidra_mcp.config as config
+
+    mapped_zero = SimpleNamespace(is_unspecified=True)
+    python_312_address = SimpleNamespace(
+        is_unspecified=False,
+        ipv4_mapped=mapped_zero,
+    )
+    monkeypatch.setattr(config, "ip_address", lambda _: python_312_address)
+
+    with pytest.raises(config.ConfigurationError, match="GHIDRA_MCP_PUBLIC_URL"):
+        config.normalize_http_public_url("http://[::ffff:0.0.0.0]")
+
+
 @pytest.mark.parametrize(
     ("public_url", "expected"),
     [
         ("http://127.0.0.1", "http://127.0.0.1"),
         ("https://mcp.example", "https://mcp.example"),
         ("http://[2001:db8::1]:8765", "http://[2001:db8::1]:8765"),
+        ("http://[::ffff:127.0.0.1]", "http://[::ffff:127.0.0.1]"),
     ],
 )
 def test_public_url_accepts_specific_ip_and_domain_hosts(public_url: str, expected: str) -> None:
