@@ -61,7 +61,7 @@ stdio 模式用于同机 MCP 客户端，不要求 token。服务退出时会关
 | `GHIDRA_MCP_PUBLIC_URL` | 无 | HTTP 模式必填；客户端实际访问的 HTTP(S) 根 URL，用于鉴权发现元数据 |
 | `GHIDRA_MCP_STORAGE_ROOT` | `data/projects` | Ghidra 项目持久化目录 |
 | `GHIDRA_MCP_INPUT_ROOT` | 无 | HTTP 模式必填；`program_open` 只能读取该目录内文件，符号链接也不能越界 |
-| `GHIDRA_MCP_AUTH_TOKEN` | 无 | HTTP 模式必填且至少 32 个 UTF-8 字节；仅从环境变量或 `.env` 读取 |
+| `GHIDRA_MCP_AUTH_TOKEN` | 无 | HTTP 模式必填且至少 32 个 UTF-8 字节，不允许首尾空白；仅从环境变量或 `.env` 读取 |
 
 `GHIDRA_MCP_PUBLIC_URL` 不得使用 `0.0.0.0`/`::`、用户信息、查询参数或路径前缀；反向代理部署时填写客户端看到的 HTTPS 根 URL。未知 TOML 节或键会立即报错。不要把真实 token 写入 TOML、命令历史、日志或 Git。
 

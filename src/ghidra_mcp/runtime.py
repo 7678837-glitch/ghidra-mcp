@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import sys
 from threading import RLock
+from time import monotonic
 from types import ModuleType
 from typing import Any, Iterator
 from uuid import uuid4
@@ -78,8 +79,9 @@ class GhidraRuntime:
     def analyze(self, program: Any) -> None:
         self.ensure_started()
         monitor = self.pyghidra.task_monitor(self.analysis_timeout_seconds)
+        deadline = monotonic() + self.analysis_timeout_seconds
         self.pyghidra.analyze(program, monitor=monitor)
-        if monitor.isCancelled():
+        if monitor.isCancelled() and monotonic() >= deadline:
             raise TimeoutError(f"Ghidra 自动分析超过 {self.analysis_timeout_seconds} 秒")
 
     def program_context(

@@ -174,6 +174,7 @@ class FakePyGhidra:
         self.analysis_timeouts: list[int] = []
         self.analysis_calls: list[object] = []
         self.cancel_analysis = False
+        self.cancel_after_analysis = False
 
     def start(self, *, install_dir: Path) -> object:
         self.start_calls.append(install_dir)
@@ -190,6 +191,8 @@ class FakePyGhidra:
 
     def analyze(self, program: object, *, monitor: object) -> None:
         self.analysis_calls.append(program)
+        if self.cancel_after_analysis:
+            self.cancel_analysis = True
 
     @contextmanager
     def _program_context_factory(self, binary_path: Path, **options: object):
@@ -243,7 +246,9 @@ def test_workspace_starts_jvm_once_and_owns_program_lifecycle(tmp_path: Path) ->
     assert fake.closed == [binary.resolve(), binary.resolve()]
 
 
-def test_runtime_bounds_analysis_and_reports_monitor_cancellation(tmp_path: Path) -> None:
+def test_runtime_bounds_analysis_and_reports_monitor_cancellation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from ghidra_mcp.runtime import GhidraRuntime
 
     install_dir = tmp_path / "ghidra"
@@ -263,8 +268,26 @@ def test_runtime_bounds_analysis_and_reports_monitor_cancellation(tmp_path: Path
     assert fake.analysis_calls == [program]
 
     fake.cancel_analysis = True
+    clock = iter([0, 17])
+    monkeypatch.setattr("ghidra_mcp.runtime.monotonic", lambda: next(clock))
     with pytest.raises(TimeoutError, match="17"):
         runtime.analyze(program)
+
+
+def test_runtime_accepts_pyghidra_normal_completion_cancellation(tmp_path: Path) -> None:
+    from ghidra_mcp.runtime import GhidraRuntime
+
+    install_dir = tmp_path / "ghidra"
+    write_ghidra_version(install_dir)
+    fake = FakePyGhidra()
+    fake.cancel_after_analysis = True
+    runtime = GhidraRuntime(
+        install_dir=install_dir,
+        pyghidra_module=fake,
+        analysis_timeout_seconds=17,
+    )
+
+    runtime.analyze(object())
 
 
 @pytest.mark.parametrize("version", ["12.0.4", "12.1.0", "12.1.1"])

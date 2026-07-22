@@ -84,6 +84,30 @@ def test_http_service_rejects_weak_token_even_for_direct_settings(tmp_path: Path
         create_service(settings, pyghidra_module=FakePyGhidra())
 
 
+@pytest.mark.parametrize(
+    "auth_token",
+    [" " + "x" * 32, "x" * 32 + " ", "x" + " " * 31],
+)
+def test_http_service_rejects_token_with_edge_whitespace_even_for_direct_settings(
+    tmp_path: Path, auth_token: str
+) -> None:
+    from ghidra_mcp.config import ConfigurationError, Settings
+    from ghidra_mcp.service import create_service
+
+    install_dir = tmp_path / "ghidra"
+    install_dir.mkdir()
+    settings = Settings(
+        install_dir=install_dir,
+        transport="streamable-http",
+        input_root=tmp_path,
+        public_url="https://mcp.example",
+        auth_token=auth_token,
+    )
+
+    with pytest.raises(ConfigurationError, match="首尾空白"):
+        create_service(settings, pyghidra_module=FakePyGhidra())
+
+
 def test_http_service_requires_public_url_even_for_direct_settings(tmp_path: Path) -> None:
     from ghidra_mcp.config import ConfigurationError, Settings
     from ghidra_mcp.service import create_service

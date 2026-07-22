@@ -17,6 +17,8 @@ class ConfigurationError(ValueError):
 def validate_http_auth_token(token: str | None) -> None:
     if token is None or not token.strip():
         raise ConfigurationError("streamable-http 必须设置 GHIDRA_MCP_AUTH_TOKEN")
+    if token != token.strip():
+        raise ConfigurationError("GHIDRA_MCP_AUTH_TOKEN 不允许包含首尾空白")
     if len(token.encode("utf-8")) < 32:
         raise ConfigurationError("GHIDRA_MCP_AUTH_TOKEN 至少需要 32 个 UTF-8 字节")
 
