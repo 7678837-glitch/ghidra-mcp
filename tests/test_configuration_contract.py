@@ -100,6 +100,28 @@ def test_streamable_http_requires_auth_token_and_input_root(tmp_path: Path) -> N
         )
 
 
+@pytest.mark.parametrize(
+    "auth_token",
+    [" " + "x" * 32, "x" * 32 + " "],
+)
+def test_streamable_http_rejects_environment_token_with_edge_whitespace(
+    tmp_path: Path, auth_token: str
+) -> None:
+    from ghidra_mcp.config import ConfigurationError, load_settings
+
+    with pytest.raises(ConfigurationError, match="首尾空白"):
+        load_settings(
+            config_path=None,
+            dotenv_path=None,
+            environ={
+                "GHIDRA_MCP_TRANSPORT": "streamable-http",
+                "GHIDRA_MCP_AUTH_TOKEN": auth_token,
+                "GHIDRA_MCP_INPUT_ROOT": str(tmp_path),
+                "GHIDRA_MCP_PUBLIC_URL": "https://mcp.example",
+            },
+        )
+
+
 def test_streamable_http_requires_an_explicit_valid_public_url(tmp_path: Path) -> None:
     from ghidra_mcp.config import ConfigurationError, load_settings
 

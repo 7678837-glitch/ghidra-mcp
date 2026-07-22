@@ -135,7 +135,7 @@ def load_settings(
     if transport not in {"stdio", "streamable-http"}:
         raise ConfigurationError("server.transport 必须是 stdio 或 streamable-http")
     auth_token = environment.get("GHIDRA_MCP_AUTH_TOKEN", dotenv.get("GHIDRA_MCP_AUTH_TOKEN", ""))
-    auth_token = auth_token.strip() or None
+    auth_token = auth_token or None
     if transport == "streamable-http":
         validate_http_auth_token(auth_token)
     input_value = value("GHIDRA_MCP_INPUT_ROOT", storage, "input_root", "")
