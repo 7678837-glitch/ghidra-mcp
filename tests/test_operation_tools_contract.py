@@ -102,6 +102,7 @@ class FakeProgram:
         self.events = []
         self.bookmarks = FakeBookmarkManager()
         self.undo_name = None
+        self.analyzed = False
 
     def startTransaction(self, name):
         self.events.append(("start", name))
@@ -111,6 +112,8 @@ class FakeProgram:
         self.events.append(("end", commit))
         if commit:
             self.undo_name = self.events[-2][1]
+        else:
+            self.analyzed = False
 
     def canUndo(self):
         return self.undo_name is not None
@@ -121,6 +124,7 @@ class FakeProgram:
     def undo(self):
         self.events.append(("undo", self.undo_name))
         self.undo_name = None
+        self.analyzed = False
 
     def getMemory(self):
         return FakeMemory()
@@ -157,13 +161,15 @@ class FakeAPI:
 
     def analyzeAll(self, program):
         self.analyzed = True
+        program.analyzed = True
 
 
 class FakeWorkspace:
-    def __init__(self, *, fail_save=False):
+    def __init__(self, *, fail_save=False, fail_analysis=False):
         self.api = FakeAPI()
         self.saved = []
         self.fail_save = fail_save
+        self.fail_analysis = fail_analysis
 
     def get(self, program_id):
         return self.api
@@ -172,6 +178,11 @@ class FakeWorkspace:
         self.saved.append(program_id)
         if self.fail_save:
             raise RuntimeError("disk unavailable")
+
+    def analyze(self, program_id):
+        self.api.analyzeAll(self.api.getCurrentProgram())
+        if self.fail_analysis:
+            raise TimeoutError("analysis timed out")
 
 
 def test_operation_tools_search_analyze_and_commit_mutations():
@@ -233,3 +244,35 @@ def test_operation_write_rolls_back_when_persistence_fails():
 
     assert workspace.api.program.events[-1] == ("undo", "Apply data type")
     assert workspace.saved == ["p"]
+
+
+def test_analysis_run_rolls_back_when_persistence_fails():
+    from ghidra_mcp.tools.operations import register_operation_tools
+
+    workspace = FakeWorkspace(fail_save=True)
+    registry = ToolRegistry()
+    register_operation_tools(registry, workspace)
+    tools = {tool.name: tool.handler for tool in registry.enabled_tools()}
+
+    with pytest.raises(RuntimeError, match="disk unavailable"):
+        tools["analysis_run"]("p")
+
+    assert workspace.api.program.analyzed is False
+    assert workspace.api.program.events[-1] == ("undo", "Run analysis")
+    assert workspace.saved == ["p"]
+
+
+def test_analysis_run_rolls_back_when_analysis_times_out():
+    from ghidra_mcp.tools.operations import register_operation_tools
+
+    workspace = FakeWorkspace(fail_analysis=True)
+    registry = ToolRegistry()
+    register_operation_tools(registry, workspace)
+    tools = {tool.name: tool.handler for tool in registry.enabled_tools()}
+
+    with pytest.raises(TimeoutError, match="timed out"):
+        tools["analysis_run"]("p")
+
+    assert workspace.api.program.analyzed is False
+    assert workspace.api.program.events[-1] == ("end", False)
+    assert workspace.saved == []

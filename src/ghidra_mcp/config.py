@@ -7,26 +7,36 @@ from pathlib import Path
 from typing import Mapping
 import os
 import tomllib
+from urllib.parse import urlsplit
 
 
 class ConfigurationError(ValueError):
     """配置文件或环境变量不符合公开契约。"""
 
 
+def validate_http_auth_token(token: str | None) -> None:
+    if token is None or not token.strip():
+        raise ConfigurationError("streamable-http 必须设置 GHIDRA_MCP_AUTH_TOKEN")
+    if len(token.encode("utf-8")) < 32:
+        raise ConfigurationError("GHIDRA_MCP_AUTH_TOKEN 至少需要 32 个 UTF-8 字节")
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     install_dir: Path | None = None
+    analysis_timeout_seconds: int = 300
     transport: str = "stdio"
     host: str = "127.0.0.1"
     port: int = 8765
     storage_root: Path = Path("data/projects")
     input_root: Path | None = None
+    public_url: str | None = None
     auth_token: str | None = field(default=None, repr=False)
 
 
 _ALLOWED_KEYS = {
-    "ghidra": {"install_dir"},
-    "server": {"transport", "host", "port"},
+    "ghidra": {"install_dir", "analysis_timeout_seconds"},
+    "server": {"transport", "host", "port", "public_url"},
     "storage": {"root", "input_root"},
 }
 
@@ -69,6 +79,34 @@ def _integer(value: object, *, key: str) -> int:
         raise ConfigurationError(f"{key} 必须是整数，实际为 {value!r}") from error
 
 
+def normalize_http_public_url(value: str | None) -> str:
+    if value is None or not value.strip():
+        raise ConfigurationError("streamable-http 必须设置 GHIDRA_MCP_PUBLIC_URL")
+    try:
+        parsed = urlsplit(value.strip())
+        port = parsed.port
+    except ValueError as error:
+        raise ConfigurationError("GHIDRA_MCP_PUBLIC_URL 必须是有效的 HTTP(S) 根 URL") from error
+    if (
+        parsed.scheme not in {"http", "https"}
+        or parsed.hostname is None
+        or parsed.hostname in {"0.0.0.0", "::"}
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+        or any(character.isspace() for character in parsed.netloc)
+    ):
+        raise ConfigurationError("GHIDRA_MCP_PUBLIC_URL 必须是有效的 HTTP(S) 根 URL")
+    normalized = f"{parsed.scheme}://{parsed.hostname}"
+    if ":" in parsed.hostname:
+        normalized = f"{parsed.scheme}://[{parsed.hostname}]"
+    if port is not None:
+        normalized = f"{normalized}:{port}"
+    return normalized
+
+
 def load_settings(
     *,
     config_path: Path | None = Path("data/config/default.toml"),
@@ -96,24 +134,41 @@ def load_settings(
         raise ConfigurationError("server.transport 必须是 stdio 或 streamable-http")
     auth_token = environment.get("GHIDRA_MCP_AUTH_TOKEN", dotenv.get("GHIDRA_MCP_AUTH_TOKEN", ""))
     auth_token = auth_token.strip() or None
-    if transport == "streamable-http" and auth_token is None:
-        raise ConfigurationError("streamable-http 必须设置 GHIDRA_MCP_AUTH_TOKEN")
+    if transport == "streamable-http":
+        validate_http_auth_token(auth_token)
     input_value = value("GHIDRA_MCP_INPUT_ROOT", storage, "input_root", "")
     input_root = Path(str(input_value)).resolve() if input_value else None
     if transport == "streamable-http" and input_root is None:
         raise ConfigurationError("streamable-http 必须设置 GHIDRA_MCP_INPUT_ROOT")
     install_value = value("GHIDRA_INSTALL_DIR", ghidra, "install_dir", "")
     install_dir = Path(str(install_value)).resolve() if install_value else None
+    analysis_timeout_seconds = _integer(
+        value(
+            "GHIDRA_MCP_ANALYSIS_TIMEOUT_SECONDS",
+            ghidra,
+            "analysis_timeout_seconds",
+            300,
+        ),
+        key="ghidra.analysis_timeout_seconds",
+    )
+    if not 1 <= analysis_timeout_seconds <= 3600:
+        raise ConfigurationError("ghidra.analysis_timeout_seconds 必须在 1 到 3600 之间")
     port = _integer(value("GHIDRA_MCP_PORT", server, "port", 8765), key="server.port")
     if not 1 <= port <= 65535:
         raise ConfigurationError("server.port 必须在 1 到 65535 之间")
+    public_url_value = str(value("GHIDRA_MCP_PUBLIC_URL", server, "public_url", "")).strip()
+    public_url = (
+        normalize_http_public_url(public_url_value) if transport == "streamable-http" else None
+    )
 
     return Settings(
         install_dir=install_dir,
+        analysis_timeout_seconds=analysis_timeout_seconds,
         transport=transport,
         host=str(value("GHIDRA_MCP_HOST", server, "host", "127.0.0.1")),
         port=port,
         storage_root=Path(str(value("GHIDRA_MCP_STORAGE_ROOT", storage, "root", "data/projects"))),
         input_root=input_root,
+        public_url=public_url,
         auth_token=auth_token,
     )

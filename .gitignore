@@ -7,7 +7,7 @@ dist/
 build/
 tests/fixtures/generated/
 .env
-.AIINFO/yuki_pending.jsonl
+.AIINFO/
 data/*
 !data/config/
 !data/config/default.toml

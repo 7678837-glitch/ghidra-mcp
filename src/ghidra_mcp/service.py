@@ -6,7 +6,12 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from .catalog import build_default_registry
-from .config import ConfigurationError, Settings
+from .config import (
+    ConfigurationError,
+    Settings,
+    normalize_http_public_url,
+    validate_http_auth_token,
+)
 from .runtime import GhidraRuntime, ProgramWorkspace
 from .server import GhidraToolExecutor, create_mcp_app
 
@@ -31,13 +36,17 @@ class MCPService:
 def create_service(settings: Settings, *, pyghidra_module: Any | None = None) -> MCPService:
     if settings.install_dir is None:
         raise ConfigurationError("必须通过 GHIDRA_INSTALL_DIR 或 TOML 配置 Ghidra 安装目录")
-    if settings.transport == "streamable-http" and (
-        settings.auth_token is None or not settings.auth_token.strip()
-    ):
-        raise ConfigurationError("streamable-http 必须设置 GHIDRA_MCP_AUTH_TOKEN")
+    public_url = None
+    if settings.transport == "streamable-http":
+        validate_http_auth_token(settings.auth_token)
+        public_url = normalize_http_public_url(settings.public_url)
     if settings.transport == "streamable-http" and settings.input_root is None:
         raise ConfigurationError("streamable-http 必须设置 GHIDRA_MCP_INPUT_ROOT")
-    runtime = GhidraRuntime(settings.install_dir, pyghidra_module=pyghidra_module)
+    runtime = GhidraRuntime(
+        settings.install_dir,
+        pyghidra_module=pyghidra_module,
+        analysis_timeout_seconds=settings.analysis_timeout_seconds,
+    )
     workspace = ProgramWorkspace(
         runtime,
         project_location=settings.storage_root,
@@ -50,6 +59,7 @@ def create_service(settings: Settings, *, pyghidra_module: Any | None = None) ->
         host=settings.host,
         port=settings.port,
         auth_token=settings.auth_token if settings.transport == "streamable-http" else None,
+        public_url=public_url,
         tool_executor=tool_executor,
     )
     return MCPService(

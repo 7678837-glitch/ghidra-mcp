@@ -23,13 +23,13 @@
 - 优先级固定为环境变量 > `.env` > TOML > 默认值。
 - 未知 TOML 节或键快速失败，错误包含键名和来源。
 - 敏感值只从环境变量或未入库的 `.env` 读取，配置对象表示和日志不得输出值。
-- HTTP 端口只接受 1–65535，transport 只接受 `stdio` 或 `streamable-http`。
+- HTTP 端口只接受 1–65535，transport 只接受 `stdio` 或 `streamable-http`；HTTP 还必须显式配置可路由的公开 HTTP(S) 根 URL，鉴权发现元数据不得从监听地址猜测。
 
 ## 数据与安全
 
 - 写操作必须在 Ghidra 事务内执行，失败时回滚并返回上下文错误。
 - 输入二进制必须存在；持久项目位于配置的 storage root，容器默认为 `/data/projects`。
-- stdio 用于本地集成；Streamable HTTP 必须配置静态 Bearer token。
+- stdio 用于本地集成；Streamable HTTP 必须配置至少 32 个 UTF-8 字节的静态 Bearer token。
 - 服务不内建 TLS；非回环网络使用时必须由可信反向代理终止 TLS并限制来源。
 - `/health` 只报告进程元数据：根 `VERSION`、构建 Git commit 和工具 schema 版本；它不伪装成某个程序已成功分析。
 
@@ -39,6 +39,7 @@
 - `memory_read` 原始读取最多 1 MiB；可选解释视图最多 4096 字节，返回 ASCII 与指定字节序/单元宽度的无符号值。
 - `memory_search` 模式最多 4096 字节、结果最多 1000 个、单次最多扫描 64 MiB 已初始化内存。
 - `decompile_function` 使用显式超时，默认 30 秒；默认输出 50000 字符，调用方可调但硬上限为 200000 字符。
+- 自动分析通过可取消 TaskMonitor 执行，默认 300 秒且配置范围 1–3600 秒；超时必须显式失败并回滚当前事务。
 
 ## 完成判据
 

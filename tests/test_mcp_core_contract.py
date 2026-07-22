@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from pathlib import Path
 import threading
 import time
+import tomllib
 
 import pytest
 from starlette.testclient import TestClient
@@ -53,9 +54,10 @@ def test_http_health_is_public_and_mcp_requires_the_configured_bearer_token() ->
     registry.register(ToolDefinition("echo", DESCRIPTION, echo))
     app = create_mcp_app(
         registry,
-        host="127.0.0.1",
+        host="0.0.0.0",
         port=8765,
         auth_token="private-test-token",
+        public_url="https://mcp.example",
         version="20260720.1",
         git_commit="abc123def456",
     )
@@ -85,17 +87,37 @@ def test_http_health_is_public_and_mcp_requires_the_configured_bearer_token() ->
     assert missing.status_code == 401
     assert wrong.status_code == 401
     assert accepted.status_code != 401
+    assert "https://mcp.example/" in missing.headers["www-authenticate"]
+    assert "0.0.0.0" not in missing.headers["www-authenticate"]
 
 
 def test_runtime_version_ignores_unrelated_working_directory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from ghidra_mcp.server import _runtime_version
+    import ghidra_mcp.server as server
 
     (tmp_path / "VERSION").write_text("unrelated-project-version\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(server, "package_version", lambda _: "20260722.1")
 
-    assert _runtime_version() == "20260720.1"
+    assert server._runtime_version() == "20260722.1"
+
+
+def test_runtime_version_uses_package_metadata_built_from_root_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ghidra_mcp.server as server
+
+    pyproject = tomllib.loads(
+        (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    assert "version" not in pyproject["project"]
+    assert "version" in pyproject["project"]["dynamic"]
+    assert pyproject["tool"]["hatch"]["version"]["path"] == "VERSION"
+
+    monkeypatch.setattr(server, "package_version", lambda _: "package-metadata-version")
+
+    assert server._runtime_version() == "package-metadata-version"
 
 
 def test_token_verifier_rejects_unicode_without_raising() -> None:
@@ -149,13 +171,25 @@ class FakePyGhidra:
         self.open_calls: list[Path] = []
         self.open_options: list[dict[str, object]] = []
         self.closed: list[Path] = []
+        self.analysis_timeouts: list[int] = []
+        self.analysis_calls: list[object] = []
+        self.cancel_analysis = False
 
     def start(self, *, install_dir: Path) -> object:
         self.start_calls.append(install_dir)
         return object()
 
-    def task_monitor(self) -> object:
-        return object()
+    def task_monitor(self, timeout: int | None = None) -> object:
+        if timeout is not None:
+            self.analysis_timeouts.append(timeout)
+        return type(
+            "Monitor",
+            (),
+            {"isCancelled": lambda monitor: self.cancel_analysis},
+        )()
+
+    def analyze(self, program: object, *, monitor: object) -> None:
+        self.analysis_calls.append(program)
 
     @contextmanager
     def _program_context_factory(self, binary_path: Path, **options: object):
@@ -209,6 +243,30 @@ def test_workspace_starts_jvm_once_and_owns_program_lifecycle(tmp_path: Path) ->
     assert fake.closed == [binary.resolve(), binary.resolve()]
 
 
+def test_runtime_bounds_analysis_and_reports_monitor_cancellation(tmp_path: Path) -> None:
+    from ghidra_mcp.runtime import GhidraRuntime
+
+    install_dir = tmp_path / "ghidra"
+    write_ghidra_version(install_dir)
+    fake = FakePyGhidra()
+    runtime = GhidraRuntime(
+        install_dir=install_dir,
+        pyghidra_module=fake,
+        analysis_timeout_seconds=17,
+    )
+    runtime.ensure_started()
+    program = object()
+
+    runtime.analyze(program)
+
+    assert fake.analysis_timeouts == [17]
+    assert fake.analysis_calls == [program]
+
+    fake.cancel_analysis = True
+    with pytest.raises(TimeoutError, match="17"):
+        runtime.analyze(program)
+
+
 @pytest.mark.parametrize("version", ["12.0.4", "12.1.0", "12.1.1"])
 def test_runtime_rejects_ghidra_versions_with_known_reachable_vulnerabilities(
     tmp_path: Path, version: str
@@ -223,6 +281,18 @@ def test_runtime_rejects_ghidra_versions_with_known_reachable_vulnerabilities(
         GhidraRuntime(install_dir, pyghidra_module=fake).ensure_started()
 
     assert fake.start_calls == []
+
+
+def test_runtime_accepts_future_two_component_ghidra_version(tmp_path: Path) -> None:
+    from ghidra_mcp.runtime import GhidraRuntime
+
+    install_dir = tmp_path / "ghidra"
+    write_ghidra_version(install_dir, "12.2")
+    fake = FakePyGhidra()
+
+    GhidraRuntime(install_dir, pyghidra_module=fake).ensure_started()
+
+    assert fake.start_calls == [install_dir]
 
 
 def test_runtime_rejects_installations_without_a_readable_version(tmp_path: Path) -> None:

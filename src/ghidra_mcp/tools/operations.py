@@ -76,8 +76,10 @@ def register_operation_tools(registry: ToolRegistry, workspace: ProgramWorkspace
         program = api.getCurrentProgram()
         manager = program.getFunctionManager()
         before = int(manager.getFunctionCount())
-        api.analyzeAll(program)
-        workspace.save(program_id)
+        with program_transaction(
+            program, "Run analysis", persist=lambda: workspace.save(program_id)
+        ):
+            workspace.analyze(program_id)
         return {"functions_before": before, "functions_after": int(manager.getFunctionCount())}
 
     def data_type_get(program_id: str, path: str) -> dict[str, object]:
@@ -150,7 +152,7 @@ def register_operation_tools(registry: ToolRegistry, workspace: ProgramWorkspace
         ),
         ToolDefinition(
             "analysis_run",
-            """对已打开程序同步运行 Ghidra 自动分析。\n\n输入输出与副作用：输入程序会话；返回分析前后函数数；会更新程序分析数据库。\n\n何时使用：以 analyze=false 打开后补分析或修改定义后重分析；首次打开通常直接让 program_open 执行分析。\n""",
+            """对已打开程序同步运行 Ghidra 自动分析。\n\n输入输出与副作用：输入程序会话；返回分析前后函数数；按配置期限执行，超时或持久化失败时回滚本次分析。\n\n何时使用：以 analyze=false 打开后补分析或修改定义后重分析；首次打开通常直接让 program_open 执行分析。\n""",
             analysis_run,
         ),
         ToolDefinition(

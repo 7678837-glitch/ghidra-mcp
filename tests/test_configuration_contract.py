@@ -51,8 +51,9 @@ def test_runtime_path_and_transport_are_validated_at_configuration_boundary(tmp_
         environ={
             "GHIDRA_INSTALL_DIR": str(install_dir),
             "GHIDRA_MCP_TRANSPORT": "streamable-http",
-            "GHIDRA_MCP_AUTH_TOKEN": "test-token",
+            "GHIDRA_MCP_AUTH_TOKEN": "test-token-0123456789012345678901",
             "GHIDRA_MCP_INPUT_ROOT": str(tmp_path),
+            "GHIDRA_MCP_PUBLIC_URL": "https://mcp.example",
         },
     )
     assert settings.install_dir == install_dir.resolve()
@@ -76,15 +77,53 @@ def test_streamable_http_requires_auth_token_and_input_root(tmp_path: Path) -> N
             environ={"GHIDRA_MCP_TRANSPORT": "streamable-http"},
         )
 
+    with pytest.raises(ConfigurationError, match="32"):
+        load_settings(
+            config_path=None,
+            dotenv_path=None,
+            environ={
+                "GHIDRA_MCP_TRANSPORT": "streamable-http",
+                "GHIDRA_MCP_AUTH_TOKEN": "short-token",
+                "GHIDRA_MCP_INPUT_ROOT": str(tmp_path),
+                "GHIDRA_MCP_PUBLIC_URL": "https://mcp.example",
+            },
+        )
+
     with pytest.raises(ConfigurationError, match="GHIDRA_MCP_INPUT_ROOT"):
         load_settings(
             config_path=None,
             dotenv_path=None,
             environ={
                 "GHIDRA_MCP_TRANSPORT": "streamable-http",
-                "GHIDRA_MCP_AUTH_TOKEN": "test-token",
+                "GHIDRA_MCP_AUTH_TOKEN": "test-token-0123456789012345678901",
             },
         )
+
+
+def test_streamable_http_requires_an_explicit_valid_public_url(tmp_path: Path) -> None:
+    from ghidra_mcp.config import ConfigurationError, load_settings
+
+    base = {
+        "GHIDRA_MCP_TRANSPORT": "streamable-http",
+        "GHIDRA_MCP_AUTH_TOKEN": "test-token-0123456789012345678901",
+        "GHIDRA_MCP_INPUT_ROOT": str(tmp_path),
+    }
+    with pytest.raises(ConfigurationError, match="GHIDRA_MCP_PUBLIC_URL"):
+        load_settings(config_path=None, dotenv_path=None, environ=base)
+    with pytest.raises(ConfigurationError, match="GHIDRA_MCP_PUBLIC_URL"):
+        load_settings(
+            config_path=None,
+            dotenv_path=None,
+            environ={**base, "GHIDRA_MCP_PUBLIC_URL": "file:///tmp/mcp"},
+        )
+
+    settings = load_settings(
+        config_path=None,
+        dotenv_path=None,
+        environ={**base, "GHIDRA_MCP_PUBLIC_URL": "https://mcp.example/"},
+    )
+
+    assert settings.public_url == "https://mcp.example"
 
 
 def test_auth_token_is_loaded_from_dotenv_but_never_exposed_by_repr(tmp_path: Path) -> None:
@@ -92,7 +131,8 @@ def test_auth_token_is_loaded_from_dotenv_but_never_exposed_by_repr(tmp_path: Pa
 
     dotenv = tmp_path / ".env"
     dotenv.write_text(
-        f"GHIDRA_MCP_AUTH_TOKEN=private-test-token\nGHIDRA_MCP_INPUT_ROOT={tmp_path}\n",
+        f"GHIDRA_MCP_AUTH_TOKEN=private-test-token-0123456789012345\n"
+        f"GHIDRA_MCP_INPUT_ROOT={tmp_path}\nGHIDRA_MCP_PUBLIC_URL=https://mcp.example\n",
         encoding="utf-8",
     )
 
@@ -102,9 +142,9 @@ def test_auth_token_is_loaded_from_dotenv_but_never_exposed_by_repr(tmp_path: Pa
         environ={"GHIDRA_MCP_TRANSPORT": "streamable-http"},
     )
 
-    assert settings.auth_token == "private-test-token"
+    assert settings.auth_token == "private-test-token-0123456789012345"
     assert settings.input_root == tmp_path.resolve()
-    assert "private-test-token" not in repr(settings)
+    assert "private-test-token-0123456789012345" not in repr(settings)
 
 
 def test_input_root_uses_environment_dotenv_toml_precedence(tmp_path: Path) -> None:
@@ -125,3 +165,24 @@ def test_input_root_uses_environment_dotenv_toml_precedence(tmp_path: Path) -> N
     )
 
     assert settings.input_root == environment_root.resolve()
+
+
+def test_analysis_timeout_is_configurable_but_bounded() -> None:
+    from ghidra_mcp.config import ConfigurationError, load_settings
+
+    default = load_settings(config_path=None, dotenv_path=None, environ={})
+    configured = load_settings(
+        config_path=None,
+        dotenv_path=None,
+        environ={"GHIDRA_MCP_ANALYSIS_TIMEOUT_SECONDS": "17"},
+    )
+
+    assert default.analysis_timeout_seconds == 300
+    assert configured.analysis_timeout_seconds == 17
+    for invalid in ("0", "3601"):
+        with pytest.raises(ConfigurationError, match="analysis_timeout_seconds"):
+            load_settings(
+                config_path=None,
+                dotenv_path=None,
+                environ={"GHIDRA_MCP_ANALYSIS_TIMEOUT_SECONDS": invalid},
+            )

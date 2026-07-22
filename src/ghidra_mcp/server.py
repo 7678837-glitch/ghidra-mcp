@@ -80,10 +80,6 @@ def _schema_version(registry: ToolRegistry) -> str:
 
 
 def _runtime_version() -> str:
-    for parent in Path(__file__).resolve().parents:
-        version_file = parent / "VERSION"
-        if version_file.is_file():
-            return version_file.read_text(encoding="utf-8").strip()
     try:
         return package_version("ghidra-mcp")
     except PackageNotFoundError:
@@ -113,6 +109,7 @@ def create_mcp_app(
     host: str,
     port: int,
     auth_token: str | None = None,
+    public_url: str | None = None,
     version: str | None = None,
     git_commit: str | None = None,
     tool_executor: GhidraToolExecutor | None = None,
@@ -120,7 +117,9 @@ def create_mcp_app(
     auth = None
     verifier = None
     if auth_token is not None:
-        base_url = f"http://{host}:{port}"
+        if public_url is None:
+            raise ValueError("启用 HTTP 鉴权时必须提供 public_url")
+        base_url = public_url.rstrip("/")
         auth = AuthSettings(
             issuer_url=base_url,
             resource_server_url=f"{base_url}/mcp",

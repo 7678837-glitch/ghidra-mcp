@@ -14,10 +14,11 @@
 docker run -d --name ghidra-mcp \
   --platform linux/amd64 \
   -p 127.0.0.1:8765:8765 \
+  -e GHIDRA_MCP_PUBLIC_URL=http://127.0.0.1:8765 \
   -e GHIDRA_MCP_AUTH_TOKEN='<随机长 token>' \
   -v ghidra-mcp-projects:/data/projects \
   -v /absolute/path/to/binaries:/data/input:ro \
-  ghidra-mcp:20260720.1
+  ghidra-mcp:20260722.1
 curl -fsS http://127.0.0.1:8765/health
 ```
 
@@ -26,7 +27,7 @@ curl -fsS http://127.0.0.1:8765/health
 ```json
 {
   "status": "ok",
-  "version": "20260720.1",
+  "version": "20260722.1",
   "git_commit": "<完整 Git commit>",
   "schema_version": "<16 位十六进制摘要>"
 }
@@ -63,13 +64,15 @@ docker run --rm \
 
 | 现象 | 原因与处理 |
 |---|---|
-| HTTP 启动时报 token 缺失 | 设置非空 `GHIDRA_MCP_AUTH_TOKEN`；stdio 不需要 |
+| HTTP 启动时报 token 缺失或过短 | 设置至少 32 个 UTF-8 字节的随机 `GHIDRA_MCP_AUTH_TOKEN`；stdio 不需要 |
+| HTTP 启动时报公开 URL 缺失 | 设置客户端实际访问的 `GHIDRA_MCP_PUBLIC_URL`；反向代理场景使用 HTTPS 根 URL，不要填写监听地址 `0.0.0.0` |
 | HTTP 启动时报 input root 缺失 | 设置 `GHIDRA_MCP_INPUT_ROOT`；容器默认 `/data/input`，且输入目录应只读挂载 |
 | `program_open` 报输入路径越界 | 把文件放入 `GHIDRA_MCP_INPUT_ROOT` 内；指向目录外的符号链接会被拒绝 |
 | `/mcp` 返回 401 | 缺少或错误的 `Authorization: Bearer <token>` |
 | `/mcp` 返回 400 | token 已通过，但请求不是有效 MCP 消息 |
 | `Unable to lock project` | 另一个会话/进程仍持有同一项目；先调用 `program_close` 或正常停止持有者 |
 | Ghidra 安装目录不存在 | 核对 `GHIDRA_INSTALL_DIR`；容器固定为 `/opt/ghidra` |
+| 自动分析超过期限 | 调整 `GHIDRA_MCP_ANALYSIS_TIMEOUT_SECONDS`（1–3600）；先确认样本复杂度与资源预算，不要无限放宽 |
 | health commit 与预期不符 | 镜像或容器未更新；停止验证功能，重新以正确 context 和 commit 构建 |
 
 ## 安全边界

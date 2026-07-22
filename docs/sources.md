@@ -4,6 +4,8 @@
 |---|---|---|---|
 | Ghidra | https://github.com/NationalSecurityAgency/ghidra | 2026-07-20 | Ghidra 公开 API 与发布信息 |
 | PyGhidra | https://github.com/NationalSecurityAgency/ghidra/tree/master/Ghidra/Features/PyGhidra | 2026-07-20 | Python 启动、项目与程序上下文 API |
+| Ghidra 开发版应用属性 | https://github.com/NationalSecurityAgency/ghidra/blob/master/Ghidra/application.properties | 2026-07-22 | 确认未来 12.2 使用两段 `application.version`，版本解析须把缺失 patch 视为 0 |
+| Hatch regex version source | https://hatch.pypa.io/1.16/plugins/version-source/regex/ | 2026-07-22 | 从根 `VERSION` 生成 wheel package metadata，消除重复版本源 |
 | Ghidra 安全公告 GHSA-j9qm-gxv4-62p4 | https://github.com/NationalSecurityAgency/ghidra/security/advisories/GHSA-j9qm-gxv4-62p4 | 2026-07-20 | 原生反编译器越界写及 12.1.1 修复边界 |
 | Ghidra 安全公告 GHSA-8jqp-qv73-395r | https://github.com/NationalSecurityAgency/ghidra/security/advisories/GHSA-8jqp-qv73-395r | 2026-07-20 | 原生反编译器 use-after-free 及 12.1 修复边界 |
 | Ghidra 安全公告 GHSA-r82g-8jpp-8cfx | https://github.com/NationalSecurityAgency/ghidra/security/advisories/GHSA-r82g-8jpp-8cfx | 2026-07-20 | 特制 ELF 导入拒绝服务及 12.1.2 修复边界 |

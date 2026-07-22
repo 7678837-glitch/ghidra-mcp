@@ -14,7 +14,7 @@ docker buildx build \
   --no-cache \
   --load \
   --build-arg GIT_COMMIT=<完整 Git commit> \
-  -t ghidra-mcp:20260720.1 .
+  -t ghidra-mcp:20260722.1 .
 ```
 
 创建持久卷并仅监听本机回环地址：
@@ -24,10 +24,11 @@ docker volume create ghidra-mcp-projects
 docker run --name ghidra-mcp \
   --platform linux/amd64 \
   -p 127.0.0.1:8765:8765 \
+  -e GHIDRA_MCP_PUBLIC_URL=http://127.0.0.1:8765 \
   -e GHIDRA_MCP_AUTH_TOKEN='<随机长 token>' \
   -v ghidra-mcp-projects:/data/projects \
   -v /absolute/path/to/binaries:/data/input:ro \
-  ghidra-mcp:20260720.1
+  ghidra-mcp:20260722.1
 ```
 
 客户端连接 `http://127.0.0.1:8765/mcp`，并发送 `Authorization: Bearer <token>`。公开健康检查位于 `http://127.0.0.1:8765/health`。
@@ -53,14 +54,16 @@ stdio 模式用于同机 MCP 客户端，不要求 token。服务退出时会关
 | 环境变量 | 默认值 | 说明 |
 |---|---:|---|
 | `GHIDRA_INSTALL_DIR` | 无 | Ghidra 安装目录；必填 |
+| `GHIDRA_MCP_ANALYSIS_TIMEOUT_SECONDS` | `300` | 自动分析期限，范围 1–3600 秒；超时会取消并回滚本次分析 |
 | `GHIDRA_MCP_TRANSPORT` | `stdio` | `stdio` 或 `streamable-http` |
 | `GHIDRA_MCP_HOST` | `127.0.0.1` | HTTP 监听地址 |
 | `GHIDRA_MCP_PORT` | `8765` | HTTP 监听端口，范围 1–65535 |
+| `GHIDRA_MCP_PUBLIC_URL` | 无 | HTTP 模式必填；客户端实际访问的 HTTP(S) 根 URL，用于鉴权发现元数据 |
 | `GHIDRA_MCP_STORAGE_ROOT` | `data/projects` | Ghidra 项目持久化目录 |
 | `GHIDRA_MCP_INPUT_ROOT` | 无 | HTTP 模式必填；`program_open` 只能读取该目录内文件，符号链接也不能越界 |
-| `GHIDRA_MCP_AUTH_TOKEN` | 无 | HTTP 模式必填；仅从环境变量或 `.env` 读取 |
+| `GHIDRA_MCP_AUTH_TOKEN` | 无 | HTTP 模式必填且至少 32 个 UTF-8 字节；仅从环境变量或 `.env` 读取 |
 
-未知 TOML 节或键会立即报错。不要把真实 token 写入 TOML、命令历史、日志或 Git。
+`GHIDRA_MCP_PUBLIC_URL` 不得使用 `0.0.0.0`/`::`、用户信息、查询参数或路径前缀；反向代理部署时填写客户端看到的 HTTPS 根 URL。未知 TOML 节或键会立即报错。不要把真实 token 写入 TOML、命令历史、日志或 Git。
 
 ## 文档
 

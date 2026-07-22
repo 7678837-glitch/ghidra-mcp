@@ -1,7 +1,12 @@
+[ghidra]
+analysis_timeout_seconds = 300
+
 [server]
 transport = "stdio"
 host = "127.0.0.1"
 port = 8765
+# Streamable HTTP 必须显式设置客户端实际访问的公开根 URL。
+# public_url = "http://127.0.0.1:8765"
 
 [storage]
 root = "data/projects"

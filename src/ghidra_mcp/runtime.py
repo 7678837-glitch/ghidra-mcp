@@ -30,10 +30,10 @@ def _read_ghidra_version(install_dir: Path) -> tuple[int, int, int]:
     for line in lines:
         key, separator, value = line.partition("=")
         if separator and key.strip() == "application.version":
-            match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-._].*)?", value.strip())
+            match = re.fullmatch(r"(\d+)\.(\d+)(?:\.(\d+))?(?:[-._].*)?", value.strip())
             if match is not None:
                 major, minor, patch = match.groups()
-                return int(major), int(minor), int(patch)
+                return int(major), int(minor), int(patch or 0)
             break
     raise WorkspaceError(f"无法确认 Ghidra 版本：{properties} 缺少有效的 application.version")
 
@@ -47,7 +47,11 @@ class _ProgramRecord:
 
 class GhidraRuntime:
     def __init__(
-        self, install_dir: Path, *, pyghidra_module: ModuleType | Any | None = None
+        self,
+        install_dir: Path,
+        *,
+        pyghidra_module: ModuleType | Any | None = None,
+        analysis_timeout_seconds: int = 300,
     ) -> None:
         self.install_dir = install_dir.resolve()
         if pyghidra_module is None:
@@ -55,6 +59,7 @@ class GhidraRuntime:
 
             pyghidra_module = pyghidra
         self.pyghidra = pyghidra_module
+        self.analysis_timeout_seconds = analysis_timeout_seconds
         self._launcher: object | None = None
         self._lock = RLock()
 
@@ -69,6 +74,13 @@ class GhidraRuntime:
                     raise WorkspaceError(f"Ghidra {detected} 低于安全最低版本 12.1.2")
                 self._launcher = self.pyghidra.start(install_dir=self.install_dir)
             return self._launcher
+
+    def analyze(self, program: Any) -> None:
+        self.ensure_started()
+        monitor = self.pyghidra.task_monitor(self.analysis_timeout_seconds)
+        self.pyghidra.analyze(program, monitor=monitor)
+        if monitor.isCancelled():
+            raise TimeoutError(f"Ghidra 自动分析超过 {self.analysis_timeout_seconds} 秒")
 
     def program_context(
         self,
@@ -115,7 +127,7 @@ class GhidraRuntime:
             else:
                 try:
                     if analyze:
-                        self.pyghidra.analyze(program)
+                        self.analyze(program)
                     yield self._flat_api(program)
                 except BaseException:
                     if not existing_context.__exit__(*sys.exc_info()):
@@ -135,7 +147,7 @@ class GhidraRuntime:
             program = results.getPrimaryDomainObject(consumer)
             try:
                 if analyze:
-                    self.pyghidra.analyze(program)
+                    self.analyze(program)
                 results.save(self.pyghidra.task_monitor())
                 yield self._flat_api(program)
             finally:
@@ -260,6 +272,9 @@ class ProgramWorkspace:
 
     def save(self, program_id: str) -> None:
         self.runtime.save(self.get(program_id))
+
+    def analyze(self, program_id: str) -> None:
+        self.runtime.analyze(self.get(program_id).getCurrentProgram())
 
     def close_all(self) -> None:
         with self._lock:

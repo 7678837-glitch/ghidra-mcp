@@ -225,7 +225,6 @@ wheels = [
 
 [[package]]
 name = "ghidra-mcp"
-version = "20260720.1"
 source = { editable = "." }
 dependencies = [
     { name = "mcp" },
