@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
+from mcp.types import ToolAnnotations
+
 
 class RegistryError(ValueError):
     """工具注册违反唯一性或命名契约。"""
@@ -21,6 +23,7 @@ class ToolDefinition:
     handler: Callable[..., object]
     group: str = "default"
     contract_version: int = 1
+    annotations: ToolAnnotations | None = None
 
     def __post_init__(self) -> None:
         if self.contract_version < 1:

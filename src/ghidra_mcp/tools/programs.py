@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from mcp.types import ToolAnnotations
+
 from ..registry import ToolDefinition, ToolRegistry
 from ..runtime import ProgramWorkspace
 
@@ -56,11 +58,17 @@ def register_program_tools(registry: ToolRegistry, workspace: ProgramWorkspace) 
             "program_close",
             """关闭程序会话并释放对应 Ghidra 上下文。
 
-输入输出与副作用：输入程序会话标识；返回已关闭标识；保存并关闭项目资源。
+输入输出与副作用：输入程序会话标识；返回已关闭标识；先保存项目，保存成功后才关闭并释放资源；保存失败时保留会话并返回错误。
 
 何时使用：完成该程序的全部操作后调用；仍需继续读取或修改时不要关闭。
 """,
             program_close,
+            annotations=ToolAnnotations(
+                readOnlyHint=False,
+                destructiveHint=True,
+                idempotentHint=False,
+                openWorldHint=False,
+            ),
         ),
     )
     for definition in definitions:

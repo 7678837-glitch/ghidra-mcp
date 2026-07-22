@@ -57,6 +57,65 @@ def test_schema_version_changes_when_return_contract_changes() -> None:
     assert _schema_version(first) != _schema_version(second)
 
 
+def test_schema_version_changes_when_tool_annotations_change() -> None:
+    from mcp.types import ToolAnnotations
+
+    from ghidra_mcp.server import _schema_version
+
+    def echo(text: str) -> str:
+        return text
+
+    first = ToolRegistry()
+    first.register(
+        ToolDefinition(
+            "echo",
+            DESCRIPTION,
+            echo,
+            annotations=ToolAnnotations(readOnlyHint=True),
+        )
+    )
+    second = ToolRegistry()
+    second.register(
+        ToolDefinition(
+            "echo",
+            DESCRIPTION,
+            echo,
+            annotations=ToolAnnotations(readOnlyHint=False),
+        )
+    )
+
+    assert _schema_version(first) != _schema_version(second)
+
+
+def test_mcp_app_exposes_tool_risk_annotations() -> None:
+    from mcp.types import ToolAnnotations
+
+    from ghidra_mcp.server import create_mcp_app
+
+    registry = ToolRegistry()
+
+    def close_session() -> str:
+        return "closed"
+
+    registry.register(
+        ToolDefinition(
+            "close_session",
+            DESCRIPTION,
+            close_session,
+            annotations=ToolAnnotations(
+                readOnlyHint=False,
+                destructiveHint=False,
+                idempotentHint=False,
+                openWorldHint=False,
+            ),
+        )
+    )
+
+    listed = asyncio.run(create_mcp_app(registry, host="127.0.0.1", port=8765).list_tools())
+
+    assert listed[0].annotations == registry.enabled_tools()[0].annotations
+
+
 def test_http_health_is_public_and_mcp_requires_the_configured_bearer_token() -> None:
     from ghidra_mcp.server import create_mcp_app
 

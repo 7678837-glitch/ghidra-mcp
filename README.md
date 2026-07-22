@@ -14,7 +14,7 @@ docker buildx build \
   --no-cache \
   --load \
   --build-arg GIT_COMMIT=<完整 Git commit> \
-  -t ghidra-mcp:20260722.2 .
+  -t ghidra-mcp:20260722.3 .
 ```
 
 创建持久卷并仅监听本机回环地址：
@@ -28,7 +28,7 @@ docker run --name ghidra-mcp \
   -e GHIDRA_MCP_AUTH_TOKEN='<随机长 token>' \
   -v ghidra-mcp-projects:/data/projects \
   -v /absolute/path/to/binaries:/data/input:ro \
-  ghidra-mcp:20260722.2
+  ghidra-mcp:20260722.3
 ```
 
 客户端连接 `http://127.0.0.1:8765/mcp`，并发送 `Authorization: Bearer <token>`。公开健康检查位于 `http://127.0.0.1:8765/health`。

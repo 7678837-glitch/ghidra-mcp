@@ -79,6 +79,12 @@ def test_program_tools_cover_open_list_info_and_close(tmp_path: Path) -> None:
     tools = {tool.name: tool for tool in registry.enabled_tools()}
 
     assert list(tools) == ["program_open", "program_list", "program_info", "program_close"]
+    close_annotations = tools["program_close"].annotations
+    assert close_annotations is not None
+    assert close_annotations.readOnlyHint is False
+    assert close_annotations.destructiveHint is True
+    assert close_annotations.idempotentHint is False
+    assert close_annotations.openWorldHint is False
 
     opened = tools["program_open"].handler(str(binary), analyze=False)
     program_id = opened["program_id"]

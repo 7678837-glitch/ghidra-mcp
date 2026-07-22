@@ -73,6 +73,11 @@ def _schema_version(registry: ToolRegistry) -> str:
             "description": tool.description,
             "signature": str(inspect.signature(tool.handler)),
             "contract_version": tool.contract_version,
+            "annotations": (
+                tool.annotations.model_dump(exclude_none=True)
+                if tool.annotations is not None
+                else None
+            ),
         }
         for tool in registry.enabled_tools()
     ]
@@ -136,9 +141,11 @@ def create_mcp_app(
     )
     executor = tool_executor or GhidraToolExecutor()
     for tool in registry.enabled_tools():
-        app.tool(name=tool.name, description=tool.description)(
-            _async_handler(tool.handler, executor)
-        )
+        app.tool(
+            name=tool.name,
+            description=tool.description,
+            annotations=tool.annotations,
+        )(_async_handler(tool.handler, executor))
 
     health_payload = {
         "status": "ok",
