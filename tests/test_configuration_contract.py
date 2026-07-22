@@ -169,6 +169,82 @@ def test_auth_token_is_loaded_from_dotenv_but_never_exposed_by_repr(tmp_path: Pa
     assert "private-test-token-0123456789012345" not in repr(settings)
 
 
+@pytest.mark.parametrize(
+    "assignment",
+    [
+        "GHIDRA_MCP_AUTH_TOKEN= " + "x" * 32,
+        "GHIDRA_MCP_AUTH_TOKEN=" + "x" * 32 + " ",
+    ],
+)
+def test_streamable_http_rejects_unquoted_dotenv_token_with_edge_whitespace(
+    tmp_path: Path, assignment: str
+) -> None:
+    from ghidra_mcp.config import ConfigurationError, load_settings
+
+    dotenv = tmp_path / ".env"
+    dotenv.write_text(
+        f"{assignment}\nGHIDRA_MCP_INPUT_ROOT={tmp_path}\n"
+        "GHIDRA_MCP_PUBLIC_URL=https://mcp.example\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError, match="首尾空白"):
+        load_settings(
+            config_path=None,
+            dotenv_path=dotenv,
+            environ={"GHIDRA_MCP_TRANSPORT": "streamable-http"},
+        )
+
+
+@pytest.mark.parametrize("quote", ['"', "'"])
+def test_streamable_http_accepts_dotenv_token_with_matching_outer_quotes(
+    tmp_path: Path, quote: str
+) -> None:
+    from ghidra_mcp.config import load_settings
+
+    token = "quoted-test-token-0123456789012345"
+    dotenv = tmp_path / ".env"
+    dotenv.write_text(
+        f"GHIDRA_MCP_AUTH_TOKEN={quote}{token}{quote}\n"
+        f"GHIDRA_MCP_INPUT_ROOT={tmp_path}\n"
+        "GHIDRA_MCP_PUBLIC_URL=https://mcp.example\n",
+        encoding="utf-8",
+    )
+
+    settings = load_settings(
+        config_path=None,
+        dotenv_path=dotenv,
+        environ={"GHIDRA_MCP_TRANSPORT": "streamable-http"},
+    )
+
+    assert settings.auth_token == token
+
+
+@pytest.mark.parametrize(
+    "quoted_token",
+    ['" ' + "x" * 32 + '"', '"' + "x" * 32 + ' "'],
+)
+def test_streamable_http_rejects_dotenv_token_with_whitespace_inside_quotes(
+    tmp_path: Path, quoted_token: str
+) -> None:
+    from ghidra_mcp.config import ConfigurationError, load_settings
+
+    dotenv = tmp_path / ".env"
+    dotenv.write_text(
+        f"GHIDRA_MCP_AUTH_TOKEN={quoted_token}\n"
+        f"GHIDRA_MCP_INPUT_ROOT={tmp_path}\n"
+        "GHIDRA_MCP_PUBLIC_URL=https://mcp.example\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError, match="首尾空白"):
+        load_settings(
+            config_path=None,
+            dotenv_path=dotenv,
+            environ={"GHIDRA_MCP_TRANSPORT": "streamable-http"},
+        )
+
+
 def test_input_root_uses_environment_dotenv_toml_precedence(tmp_path: Path) -> None:
     from ghidra_mcp.config import load_settings
 

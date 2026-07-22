@@ -64,13 +64,23 @@ def _read_dotenv(path: Path | None) -> dict[str, str]:
         return {}
     values: dict[str, str] = {}
     for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
+        stripped_line = raw_line.strip()
+        if not stripped_line or stripped_line.startswith("#"):
             continue
-        key, separator, value = line.partition("=")
+        key, separator, value = raw_line.partition("=")
         if not separator or not key.strip():
             raise ConfigurationError(f"无效 .env 行 {line_number}，来源 {path.name}")
-        values[key.strip()] = value.strip().strip('"').strip("'")
+        key = key.strip()
+        if (
+            key == "GHIDRA_MCP_AUTH_TOKEN"
+            and len(value) >= 2
+            and value[0] == value[-1]
+            and value[0] in {'"', "'"}
+        ):
+            value = value[1:-1]
+        elif key != "GHIDRA_MCP_AUTH_TOKEN":
+            value = value.strip().strip('"').strip("'")
+        values[key] = value
     return values
 
 
