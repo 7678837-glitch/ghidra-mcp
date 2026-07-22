@@ -1,29 +1,30 @@
-# 安全政策
+# Security policy
 
-## 支持范围
+## Supported versions
 
-安全修复只面向当前 `main` 分支和 README 所列的 Ghidra 安全基线。旧提交、低于安全基线的 Ghidra 版本以及未经修改的第三方组件不在支持范围内。
+Security fixes target the current `main` branch and the Ghidra security baseline documented in the README. Older commits, Ghidra releases below that baseline, and unmodified third-party components are outside the supported scope.
 
-## 报告漏洞
+## Report a vulnerability
 
-请不要在公开 Issue、讨论区、日志或测试样本中披露可利用细节、凭据或敏感二进制。
+Do not disclose exploitable details, credentials, or sensitive binaries in public issues, discussions, logs, or test fixtures.
 
-GitHub Private Vulnerability Reporting 只对 public 仓库提供。仓库切换为 public 后，所有者必须立即启用该功能，并确认 Security 页面出现 **Report a vulnerability**。启用后，请使用该入口私密提交以下信息：
+Use GitHub Private Vulnerability Reporting through the repository Security page and include:
 
-- 受影响的版本或 Git commit；
-- 最小复现步骤和实际影响；
-- 必要时提供已脱敏的日志或样本特征；
-- 已知缓解措施。
+- the affected version or Git commit;
+- minimal reproduction steps and actual impact;
+- redacted logs or sample characteristics when necessary;
+- known mitigations.
 
-如果仓库 Security 页面没有私密报告入口，请不要创建公开 Issue，也不要发送或上传恶意样本、凭据、可利用细节或包含第三方数据的文件；先通过仓库所有者 GitHub 个人资料中列出的私密联系方式请求安全报告渠道。
+If **Report a vulnerability** is not available, do not create a public issue or upload malicious samples, credentials, exploit details, or third-party data. First request a private reporting channel through the repository owner's GitHub profile.
 
-## 部署安全边界
+## Deployment boundaries
 
-- stdio 仅用于同机可信客户端；Streamable HTTP 必须使用至少 32 字节的随机 Bearer token。
-- 非回环访问必须由可信反向代理终止 TLS，并限制可访问来源。
-- `GHIDRA_MCP_INPUT_ROOT` 只挂载待分析文件，避免宿主敏感目录；容器输入应只读。
-- Ghidra 会解析不受信任输入。服务应运行在非 root、资源受限且网络权限最小化的容器中。
-- Bearer token 是部署级凭据，不提供用户级授权；泄露后必须轮换并重启服务。
-- 持久项目卷可能包含分析结果和用户注释，应按敏感数据备份、限制访问并验证恢复。
+- Use stdio only with a trusted client on the same machine.
+- Streamable HTTP requires a random Bearer token of at least 32 UTF-8 bytes.
+- Terminate TLS at a trusted reverse proxy for non-loopback access and restrict allowed sources.
+- Mount only the analysis input directory at `GHIDRA_MCP_INPUT_ROOT`; use a read-only container mount and never expose sensitive host directories.
+- Run Ghidra in a non-root, resource-limited container with minimal network access because it parses untrusted binaries.
+- Treat the Bearer token as a deployment credential, not user-level authorization. Rotate it and restart the service after exposure.
+- Back up the persistent project volume as sensitive data, restrict access, and verify restoration.
 
-更完整的部署和恢复要求见 [运维指南](docs/operations.md)。
+See the [operations runbook](https://github.com/xjoker/ghidra-mcp/wiki/Operations) for deployment, backup, recovery, and troubleshooting procedures.

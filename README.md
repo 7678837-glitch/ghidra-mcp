@@ -114,16 +114,13 @@ The public URL cannot contain a wildcard host, user information, query string, o
 
 ## Documentation
 
-- [Usage guide](docs/usage.md) · [简体中文](docs/usage.zh-CN.md)
-- [Tool catalog](docs/tools.md)
-- [Operations guide](docs/operations.md)
-- [Verification evidence](docs/verification.md)
-- [Behavior specification](docs/specification.md)
-- [Clean-room charter](CLEANROOM.md)
+The [GitHub Wiki](https://github.com/xjoker/ghidra-mcp/wiki) contains the detailed English getting-started guide, tool catalog, and operations runbook.
+
+- [Getting started](https://github.com/xjoker/ghidra-mcp/wiki/Getting-started)
+- [Tool catalog](https://github.com/xjoker/ghidra-mcp/wiki/Tool-catalog)
+- [Operations](https://github.com/xjoker/ghidra-mcp/wiki/Operations)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
-
-The existing specialist documents are being translated progressively; the English README and usage guide are the primary public entry points.
 
 ## Development
 

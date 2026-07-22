@@ -109,16 +109,13 @@ MCP 客户端应自行拉起 stdio 进程。等价通用配置如下：
 
 ## 文档
 
-- [使用指南](docs/usage.zh-CN.md) · [English](docs/usage.md)
-- [工具目录](docs/tools.md)
-- [运维指南](docs/operations.md)
-- [验证证据](docs/verification.md)
-- [行为规格](docs/specification.md)
-- [净室章程](CLEANROOM.md)
+项目的详细文档以英文为主，统一维护在 [GitHub Wiki](https://github.com/xjoker/ghidra-mcp/wiki)：
+
+- [快速开始](https://github.com/xjoker/ghidra-mcp/wiki/Getting-started)
+- [工具目录](https://github.com/xjoker/ghidra-mcp/wiki/Tool-catalog)
+- [运维指南](https://github.com/xjoker/ghidra-mcp/wiki/Operations)
 - [贡献指南](CONTRIBUTING.md)
 - [安全政策](SECURITY.md)
-
-现有专项文档将逐步翻译；英文 README 与英文使用指南是主要公开入口，中文 README 与中文使用指南保持独立完整。
 
 ## 开发
 
