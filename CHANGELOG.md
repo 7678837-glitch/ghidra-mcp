@@ -1,5 +1,11 @@
 # Changelog
 
+## 20260722.6
+
+- Moved detailed user documentation to the GitHub Wiki and made the remaining repository documentation English-first.
+- Removed the clean-room charter and obsolete development-stage specification, source, and verification documents.
+- Added a task-oriented Wiki with getting-started, tool catalog, and operations pages.
+
 ## 20260722.5
 
 - Added a GHCR publication workflow pinned to exact action commits. Pushes to `main` build `linux/amd64` without cache, publish version and `latest` tags, and verify health metadata against the remote digest.
