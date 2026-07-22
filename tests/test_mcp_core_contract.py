@@ -43,6 +43,20 @@ def test_mcp_app_exposes_registry_tools_without_schema_relay() -> None:
     assert tools[0].inputSchema["properties"]["text"]["type"] == "string"
 
 
+def test_schema_version_changes_when_return_contract_changes() -> None:
+    from ghidra_mcp.server import _schema_version
+
+    def echo(text: str) -> str:
+        return text
+
+    first = ToolRegistry()
+    first.register(ToolDefinition("echo", DESCRIPTION, echo, contract_version=1))
+    second = ToolRegistry()
+    second.register(ToolDefinition("echo", DESCRIPTION, echo, contract_version=2))
+
+    assert _schema_version(first) != _schema_version(second)
+
+
 def test_http_health_is_public_and_mcp_requires_the_configured_bearer_token() -> None:
     from ghidra_mcp.server import create_mcp_app
 

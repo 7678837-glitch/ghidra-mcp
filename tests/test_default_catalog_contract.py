@@ -26,6 +26,7 @@ def test_default_catalog_has_one_registration_path_and_no_placeholders() -> None
         "comment_set",
         "function_create",
         "function_delete",
+        "function_body_add",
         "decompile_function",
         "call_graph",
         "control_flow_graph",

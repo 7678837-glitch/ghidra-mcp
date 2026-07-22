@@ -102,8 +102,18 @@ def register_navigation_tools(registry: ToolRegistry, workspace: ProgramWorkspac
         resolved = _address(api, address)
         function = api.getFunctionContaining(resolved)
         if function is None:
-            raise ToolInputError(f"地址未包含在函数中：{address}")
-        return _function_json(function)
+            return {
+                "requested_address": str(resolved),
+                "resolution": "unassigned",
+                "function": None,
+                "reason": "address_not_in_ghidra_function_body",
+            }
+        return {
+            "requested_address": str(resolved),
+            "resolution": "contained",
+            "function": _function_json(function),
+            "reason": None,
+        }
 
     definitions = (
         ToolDefinition(
@@ -140,11 +150,12 @@ def register_navigation_tools(registry: ToolRegistry, workspace: ProgramWorkspac
             "function_get",
             """读取包含指定地址的函数详情。
 
-输入输出与副作用：输入程序会话标识和任意函数内地址；返回函数名称、入口、签名及属性；只读。
+输入输出与副作用：输入程序会话标识和地址；返回 contained 或 unassigned 解析状态，命中时包含函数详情，未命中时明确说明地址不在 Ghidra Function body；只读。
 
 何时使用：已知地址并需要所属函数时调用；需要遍历或分页发现函数时改用 functions_list。
-""",
+            """,
             function_get,
+            contract_version=2,
         ),
     )
     for definition in definitions:

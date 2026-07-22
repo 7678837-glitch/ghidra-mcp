@@ -18,7 +18,7 @@ docker run -d --name ghidra-mcp \
   -e GHIDRA_MCP_AUTH_TOKEN='<随机长 token>' \
   -v ghidra-mcp-projects:/data/projects \
   -v /absolute/path/to/binaries:/data/input:ro \
-  ghidra-mcp:20260722.1
+  ghidra-mcp:20260722.2
 curl -fsS http://127.0.0.1:8765/health
 ```
 
@@ -27,7 +27,7 @@ curl -fsS http://127.0.0.1:8765/health
 ```json
 {
   "status": "ok",
-  "version": "20260722.1",
+  "version": "20260722.2",
   "git_commit": "<完整 Git commit>",
   "schema_version": "<16 位十六进制摘要>"
 }

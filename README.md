@@ -1,6 +1,6 @@
 # Ghidra MCP
 
-面向 headless 逆向分析的单进程 MCP 服务。Python 进程通过 PyGhidra 启动 JVM、管理持久化 Ghidra 项目，并向 AI 客户端暴露 34 个任务导向工具。
+面向 headless 逆向分析的单进程 MCP 服务。Python 进程通过 PyGhidra 启动 JVM、管理持久化 Ghidra 项目，并向 AI 客户端暴露 35 个任务导向工具。
 
 > 安全支持基线是 Ghidra 12.1.2+，不是所有历史版本。Streamable HTTP 必须配置 Bearer token；跨主机部署还必须在服务前终止 TLS。
 
@@ -14,7 +14,7 @@ docker buildx build \
   --no-cache \
   --load \
   --build-arg GIT_COMMIT=<完整 Git commit> \
-  -t ghidra-mcp:20260722.1 .
+  -t ghidra-mcp:20260722.2 .
 ```
 
 创建持久卷并仅监听本机回环地址：
@@ -28,7 +28,7 @@ docker run --name ghidra-mcp \
   -e GHIDRA_MCP_AUTH_TOKEN='<随机长 token>' \
   -v ghidra-mcp-projects:/data/projects \
   -v /absolute/path/to/binaries:/data/input:ro \
-  ghidra-mcp:20260722.1
+  ghidra-mcp:20260722.2
 ```
 
 客户端连接 `http://127.0.0.1:8765/mcp`，并发送 `Authorization: Bearer <token>`。公开健康检查位于 `http://127.0.0.1:8765/health`。
@@ -67,7 +67,7 @@ stdio 模式用于同机 MCP 客户端，不要求 token。服务退出时会关
 
 ## 文档
 
-- [工具目录](docs/tools.md)：34 个默认工具及选择边界。
+- [工具目录](docs/tools.md)：35 个默认工具及选择边界。
 - [运维指南](docs/operations.md)：部署、健康检查、备份恢复与故障处理。
 - [验证证据](docs/verification.md)：真实 `.so`、Ghidra 版本和可复现命令。
 - [行为规格](docs/specification.md)：产品边界和硬性契约。

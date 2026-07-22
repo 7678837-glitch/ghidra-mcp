@@ -39,7 +39,7 @@ def test_container_mcp_analyzes_and_persists_real_elf() -> None:
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     listed = await session.list_tools()
-                    assert len(listed.tools) == 34
+                    assert len(listed.tools) == 35
                     assert len(listed.tools) <= 40
 
                     opened = _payload(
@@ -99,7 +99,7 @@ def test_container_mcp_analyzes_and_persists_real_elf() -> None:
                             {"program_id": reopened["program_id"], "address": entry},
                         )
                     )
-                    assert persisted["name"] == (rename_to or expected_name)
+                    assert persisted["function"]["name"] == (rename_to or expected_name)
                     _payload(
                         await session.call_tool(
                             "program_close", {"program_id": reopened["program_id"]}

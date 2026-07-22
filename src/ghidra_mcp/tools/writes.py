@@ -23,6 +23,19 @@ def _comment_type(value: str) -> Any:
         raise ToolInputError("kind 必须是 eol、pre、post、plate 或 repeatable") from error
 
 
+def _address_set(start: Any, end: Any) -> Any:
+    from ghidra.program.model.address import AddressSet
+
+    return AddressSet(start, end)
+
+
+def _body_ranges(body: Any) -> list[dict[str, str]]:
+    return [
+        {"start": str(address_range.getMinAddress()), "end": str(address_range.getMaxAddress())}
+        for address_range in body.getAddressRanges()
+    ]
+
+
 def _address(api: Any, value: str) -> Any:
     address = api.toAddr(value)
     if address is None:
@@ -119,6 +132,33 @@ def register_write_tools(registry: ToolRegistry, workspace: ProgramWorkspace) ->
             api.removeFunction(function)
         return {"deleted": entry_point}
 
+    def function_body_add(
+        program_id: str, entry_point: str, start: str, end: str
+    ) -> dict[str, object]:
+        api = workspace.get(program_id)
+        resolved_entry = _address(api, entry_point)
+        resolved_start = _address(api, start)
+        resolved_end = _address(api, end)
+        if resolved_start.compareTo(resolved_end) > 0:
+            raise ToolInputError("start 不得大于 end")
+        function = api.getFunctionAt(resolved_entry)
+        if function is None:
+            raise ToolInputError(f"地址不是函数入口：{entry_point}")
+        previous_body = function.getBody()
+        previous_ranges = _body_ranges(previous_body)
+        new_body = previous_body.union(_address_set(resolved_start, resolved_end))
+        program = api.getCurrentProgram()
+        with program_transaction(
+            program, "Add function body range", persist=lambda: workspace.save(program_id)
+        ):
+            function.setBody(new_body)
+        return {
+            "entry_point": str(function.getEntryPoint()),
+            "added_range": {"start": str(resolved_start), "end": str(resolved_end)},
+            "previous_body_ranges": previous_ranges,
+            "body_ranges": _body_ranges(function.getBody()),
+        }
+
     definitions = (
         ToolDefinition(
             "function_rename",
@@ -169,6 +209,16 @@ def register_write_tools(registry: ToolRegistry, workspace: ProgramWorkspace) ->
 何时使用：确认函数定义错误或误识别时调用；仅需改名时不要删除，改用 function_rename。
 """,
             function_delete,
+        ),
+        ToolDefinition(
+            "function_body_add",
+            """向入口地址精确匹配的函数体添加一个已确认的地址范围。
+
+输入输出与副作用：输入程序会话、函数入口和闭区间起止地址；返回新增范围及修改前后的完整函数体范围；在单个事务中修改并保存，范围与其他函数重叠时由 Ghidra 拒绝并回滚。
+
+何时使用：已用控制流证据确认 detached continuation 属于目标函数时调用；归属尚不确定时先用 function_get，不得凭邻近地址猜测。
+""",
+            function_body_add,
         ),
     )
     for definition in definitions:

@@ -72,6 +72,7 @@ def _schema_version(registry: ToolRegistry) -> str:
             "name": tool.name,
             "description": tool.description,
             "signature": str(inspect.signature(tool.handler)),
+            "contract_version": tool.contract_version,
         }
         for tool in registry.enabled_tools()
     ]

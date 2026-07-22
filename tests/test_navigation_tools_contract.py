@@ -155,7 +155,24 @@ def test_navigation_tools_return_stable_json_contracts() -> None:
             "thunk": False,
         }
     ]
-    assert tools["function_get"]("program-1", "00400031")["name"] == "worker"
+    assert tools["function_get"]("program-1", "00400031") == {
+        "requested_address": "00400031",
+        "resolution": "contained",
+        "function": {
+            "name": "worker",
+            "entry_point": "00400030",
+            "signature": "void worker(void)",
+            "external": False,
+            "thunk": False,
+        },
+        "reason": None,
+    }
+    assert tools["function_get"]("program-1", "00400020") == {
+        "requested_address": "00400020",
+        "resolution": "unassigned",
+        "function": None,
+        "reason": "address_not_in_ghidra_function_body",
+    }
 
 
 def test_navigation_tools_reject_invalid_bounds_and_addresses() -> None:
@@ -175,8 +192,6 @@ def test_navigation_tools_reject_invalid_bounds_and_addresses() -> None:
         tools["memory_read"]("program-1", "00400000", 3, interpret=True, byte_order="middle")
     with pytest.raises(ToolInputError, match="limit"):
         tools["functions_list"]("program-1", offset=0, limit=1001)
-    with pytest.raises(ToolInputError, match="未包含在函数"):
-        tools["function_get"]("program-1", "00400020")
 
 
 def test_functions_list_stops_after_limit(monkeypatch: pytest.MonkeyPatch) -> None:

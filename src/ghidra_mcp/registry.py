@@ -20,8 +20,11 @@ class ToolDefinition:
     description: str
     handler: Callable[..., object]
     group: str = "default"
+    contract_version: int = 1
 
     def __post_init__(self) -> None:
+        if self.contract_version < 1:
+            raise RegistryError("contract_version 必须大于或等于 1")
         for required in ("输入输出与副作用：", "何时使用："):
             if required not in self.description:
                 raise DescriptionError(f"工具 {self.name} 的说明缺少“{required.rstrip('：')}”段")

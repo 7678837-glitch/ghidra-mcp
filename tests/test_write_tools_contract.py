@@ -5,6 +5,11 @@ import pytest
 from ghidra_mcp.registry import ToolRegistry
 
 
+class FakeAddress(str):
+    def compareTo(self, other: object) -> int:
+        return (self > str(other)) - (self < str(other))
+
+
 class FakeProgram:
     def __init__(self) -> None:
         self.events: list[tuple[object, ...]] = []
@@ -44,6 +49,7 @@ class FakeFunction:
     name: str = "FUN_00400010"
     entry: str = "00400010"
     fail_rename: bool = False
+    body: "FakeBody | None" = None
 
     def getName(self) -> str:
         return self.name
@@ -56,6 +62,36 @@ class FakeFunction:
             raise RuntimeError("rename failed")
         self.program.events.append(("function_name", name, source))
         self.name = name
+
+    def getBody(self) -> "FakeBody":
+        return self.body or FakeBody([("00400010", "0040001f")])
+
+    def setBody(self, body: "FakeBody") -> None:
+        self.program.events.append(("function_body", body.ranges))
+        self.body = body
+
+
+@dataclass
+class FakeRange:
+    start: str
+    end: str
+
+    def getMinAddress(self) -> str:
+        return self.start
+
+    def getMaxAddress(self) -> str:
+        return self.end
+
+
+@dataclass
+class FakeBody:
+    ranges: list[tuple[str, str]]
+
+    def getAddressRanges(self) -> list[FakeRange]:
+        return [FakeRange(start, end) for start, end in self.ranges]
+
+    def union(self, other: "FakeBody") -> "FakeBody":
+        return FakeBody([*self.ranges, *other.ranges])
 
 
 class FakeSymbol:
@@ -99,7 +135,7 @@ class FakeAPI:
         return self.program
 
     def toAddr(self, address: str) -> str | None:
-        return address if address.startswith("0040") else None
+        return FakeAddress(address) if address.startswith("0040") else None
 
     def getFunctionContaining(self, address: str) -> FakeFunction | None:
         return self.function if address in {"00400010", "00400011"} else None
@@ -136,6 +172,7 @@ def _tools(workspace: FakeWorkspace, monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(writes, "_user_defined_source", lambda: "USER_DEFINED")
     monkeypatch.setattr(writes, "_comment_type", lambda value: value.upper())
+    monkeypatch.setattr(writes, "_address_set", lambda start, end: FakeBody([(start, end)]))
     registry = ToolRegistry()
     writes.register_write_tools(registry, workspace)
     return {tool.name: tool.handler for tool in registry.enabled_tools()}
@@ -151,6 +188,7 @@ def test_write_tools_commit_successful_transactions(monkeypatch: pytest.MonkeyPa
         "comment_set",
         "function_create",
         "function_delete",
+        "function_body_add",
     ]
     assert tools["function_rename"]("program-1", "00400011", "worker")["name"] == "worker"
     assert tools["symbol_rename"]("program-1", "00400020", "target")["name"] == "target"
@@ -164,10 +202,28 @@ def test_write_tools_commit_successful_transactions(monkeypatch: pytest.MonkeyPa
         "entry_point": "00400030",
     }
     assert tools["function_delete"]("program-1", "00400010") == {"deleted": "00400010"}
+    assert tools["function_body_add"]("program-1", "00400010", "00400030", "0040003f") == {
+        "entry_point": "00400010",
+        "added_range": {"start": "00400030", "end": "0040003f"},
+        "previous_body_ranges": [{"start": "00400010", "end": "0040001f"}],
+        "body_ranges": [
+            {"start": "00400010", "end": "0040001f"},
+            {"start": "00400030", "end": "0040003f"},
+        ],
+    }
     ends = [event for event in workspace.api.program.events if event[0] == "end"]
-    assert len(ends) == 5
+    assert len(ends) == 6
     assert all(event[2] is True for event in ends)
-    assert workspace.saved == ["program-1"] * 5
+    assert workspace.saved == ["program-1"] * 6
+
+
+def test_function_body_add_requires_exact_function_entry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tools = _tools(FakeWorkspace(), monkeypatch)
+
+    with pytest.raises(Exception, match="函数入口"):
+        tools["function_body_add"]("program-1", "00400011", "00400030", "0040003f")
 
 
 def test_write_tool_rolls_back_when_mutation_fails(monkeypatch: pytest.MonkeyPatch) -> None:

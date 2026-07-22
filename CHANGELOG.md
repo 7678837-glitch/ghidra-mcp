@@ -1,5 +1,13 @@
 # 变更记录
 
+## 20260722.2
+
+- `instructions_list` 明确返回请求起点、实际起点和跳过字节数，并支持严格起点校验。
+- `function_get` 明确区分函数体内地址与未归属地址；新增 `function_body_add` 修正已确认的 detached continuation 范围。
+- `references_list` 支持在显式对齐范围内伪反汇编未定义代码，补充 CFF 代码岛的 direct refs，并报告覆盖范围、来源和置信度。
+- `control_flow_graph` 区分静态默认流与 Ghidra 分析器推断流，避免把 computed targets 表述为确定事实。
+- 工具契约加入版本号并纳入 schema 摘要，使不兼容的响应结构变化可被客户端识别。
+
 ## 20260722.1
 
 - 从空 Git 历史实现单进程 PyGhidra MCP 服务。

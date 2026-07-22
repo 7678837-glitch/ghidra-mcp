@@ -93,14 +93,60 @@ def register_analysis_tools(registry: ToolRegistry, workspace: ProgramWorkspace)
             raise RuntimeError("函数指令超过 10000 条，拒绝生成过大的控制流图")
         nodes = [str(instruction.getAddress()) for instruction in instructions]
         edges: list[dict[str, str]] = []
+        has_computed_flow = False
+        has_inferred_flow = False
         for instruction in instructions:
             source = str(instruction.getAddress())
             fallthrough = instruction.getFallThrough()
             if fallthrough is not None:
-                edges.append({"from": source, "to": str(fallthrough), "kind": "fallthrough"})
+                edges.append(
+                    {
+                        "from": source,
+                        "to": str(fallthrough),
+                        "kind": "fallthrough",
+                        "provenance": "instruction_fallthrough",
+                        "confidence": "high",
+                    }
+                )
+            default_flows = {str(target) for target in instruction.getDefaultFlows() or ()}
+            computed = bool(instruction.getFlowType().isComputed())
+            has_computed_flow = has_computed_flow or computed
             for target in instruction.getFlows() or ():
-                edges.append({"from": source, "to": str(target), "kind": "flow"})
-        return {"function": _identity(function), "nodes": nodes, "edges": edges}
+                target_text = str(target)
+                inferred = target_text not in default_flows
+                has_inferred_flow = has_inferred_flow or inferred
+                edges.append(
+                    {
+                        "from": source,
+                        "to": target_text,
+                        "kind": (
+                            "computed_flow"
+                            if inferred and computed
+                            else "inferred_flow"
+                            if inferred
+                            else "direct_flow"
+                        ),
+                        "provenance": (
+                            "ghidra_non_default_flow" if inferred else "instruction_default_flow"
+                        ),
+                        "confidence": "inferred" if inferred else "high",
+                    }
+                )
+        return {
+            "function": _identity(function),
+            "nodes": nodes,
+            "edges": edges,
+            "coverage": {
+                "scope": "ghidra_function_body",
+                "defined_instructions": len(instructions),
+            },
+            "incomplete": True,
+            "incomplete_reasons": [
+                "ghidra_function_body_only",
+                *(["non_default_flow_targets_are_inferred"] if has_inferred_flow else []),
+                *(["computed_flow_targets_are_inferred"] if has_computed_flow else []),
+            ],
+        }
 
     definitions = (
         ToolDefinition(
@@ -127,11 +173,12 @@ def register_analysis_tools(registry: ToolRegistry, workspace: ProgramWorkspace)
             "control_flow_graph",
             """构建函数的指令级控制流边集合。
 
-输入输出与副作用：输入程序会话和函数内地址；返回指令节点以及 fallthrough/flow 边；只读，拒绝超过 10000 条指令的图。
+输入输出与副作用：输入程序会话和函数内地址；返回函数体内已定义指令、带来源/置信度的边、覆盖范围与不完整状态；只读，拒绝超过 10000 条指令的图。
 
 何时使用：分析分支、循环或混淆控制流时调用；跨函数调用关系应改用 call_graph。
 """,
             control_flow_graph,
+            contract_version=2,
         ),
     )
     for definition in definitions:

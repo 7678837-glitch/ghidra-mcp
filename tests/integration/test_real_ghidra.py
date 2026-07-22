@@ -47,11 +47,15 @@ def test_real_elf_shared_libraries_cover_read_decompile_write_and_reopen(
         functions = tools["functions_list"](program_id, offset=0, limit=1000)
         target = next(function for function in functions if function["name"] == expected_name)
         entry = target["entry_point"]
-        assert tools["function_get"](program_id, entry)["entry_point"] == entry
-        instructions = tools["instructions_list"](program_id, address=entry, limit=200)
+        assert tools["function_get"](program_id, entry)["function"]["entry_point"] == entry
+        instructions = tools["instructions_list"](program_id, address=entry, limit=200)[
+            "instructions"
+        ]
         assert instructions
         tools["symbols_list"](program_id, contains=expected_name, limit=20)
-        tools["references_list"](program_id, entry, direction="both", limit=20)
+        references = tools["references_list"](program_id, entry, direction="both", limit=20)
+        assert references["requested_address"] == entry
+        assert references["coverage"]["mode"] == "listing_only"
         tools["strings_list"](program_id, limit=20)
         assert expected_name in tools["decompile_function"](program_id, entry, 60)["c"]
         tools["call_graph"](program_id, entry)
@@ -61,7 +65,7 @@ def test_real_elf_shared_libraries_cover_read_decompile_write_and_reopen(
             assert any(
                 int(edge["to"], 16) < int(edge["from"], 16)
                 for edge in graph["edges"]
-                if edge["kind"] == "flow"
+                if edge["kind"] in {"direct_flow", "inferred_flow", "computed_flow"}
             ), "控制流夹具必须保留循环回边"
             assert any(
                 instruction["mnemonic"].upper() == "CALL"
@@ -92,7 +96,7 @@ def test_real_elf_shared_libraries_cover_read_decompile_write_and_reopen(
             workspace.save = fail_save  # type: ignore[method-assign]
             with pytest.raises(RuntimeError, match="simulated persistence failure"):
                 tools["function_rename"](program_id, entry, "must_be_rolled_back")
-            assert tools["function_get"](program_id, entry)["name"] == expected_name
+            assert tools["function_get"](program_id, entry)["function"]["name"] == expected_name
             workspace.save = real_save  # type: ignore[method-assign]
         tools["function_rename"](program_id, entry, f"renamed_{suffix}")
         tools["symbol_rename"](program_id, entry, f"symbol_{suffix}")
@@ -119,7 +123,7 @@ def test_real_elf_shared_libraries_cover_read_decompile_write_and_reopen(
 
         reopened = tools["program_open"](str(sample), analyze=False)
         reopened_id = reopened["program_id"]
-        assert tools["function_get"](reopened_id, entry)["name"] == f"verified_{suffix}"
+        assert tools["function_get"](reopened_id, entry)["function"]["name"] == f"verified_{suffix}"
         assert any(
             item["address"] == entry and item["text"] == f"verified {suffix}"
             for item in tools["comments_list"](reopened_id)

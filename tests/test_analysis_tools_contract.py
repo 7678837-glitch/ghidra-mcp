@@ -33,6 +33,7 @@ class FakeInstruction:
     address: str
     flows: tuple[str, ...]
     fallthrough: str | None
+    computed: bool = False
 
     def getAddress(self) -> str:
         return self.address
@@ -43,13 +44,19 @@ class FakeInstruction:
     def getFallThrough(self) -> str | None:
         return self.fallthrough
 
+    def getDefaultFlows(self) -> tuple[str, ...]:
+        return () if self.computed else self.flows
+
+    def getFlowType(self) -> object:
+        return type("FlowType", (), {"isComputed": lambda _self: self.computed})()
+
 
 class FakeListing:
     def getInstructions(self, body: set[str], forward: bool) -> list[FakeInstruction]:
         assert forward is True
         assert body == {"00400010", "00400012"}
         return [
-            FakeInstruction("00400010", ("00400030",), "00400012"),
+            FakeInstruction("00400010", ("00400030",), "00400012", computed=True),
             FakeInstruction("00400012", (), None),
         ]
 
@@ -162,8 +169,27 @@ def test_analysis_outputs_are_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
         "function": {"name": "worker", "entry_point": "00400010"},
         "nodes": ["00400010", "00400012"],
         "edges": [
-            {"from": "00400010", "to": "00400012", "kind": "fallthrough"},
-            {"from": "00400010", "to": "00400030", "kind": "flow"},
+            {
+                "from": "00400010",
+                "to": "00400012",
+                "kind": "fallthrough",
+                "provenance": "instruction_fallthrough",
+                "confidence": "high",
+            },
+            {
+                "from": "00400010",
+                "to": "00400030",
+                "kind": "computed_flow",
+                "provenance": "ghidra_non_default_flow",
+                "confidence": "inferred",
+            },
+        ],
+        "coverage": {"scope": "ghidra_function_body", "defined_instructions": 2},
+        "incomplete": True,
+        "incomplete_reasons": [
+            "ghidra_function_body_only",
+            "non_default_flow_targets_are_inferred",
+            "computed_flow_targets_are_inferred",
         ],
     }
 
@@ -202,3 +228,43 @@ def test_control_flow_graph_rejects_at_bound_without_consuming_more(
 
     with pytest.raises(RuntimeError, match="10000"):
         tools["control_flow_graph"]("program-1", "00400010")
+
+
+def test_control_flow_graph_marks_non_default_flow_as_inferred(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ghidra_mcp.tools import analysis
+
+    instruction = FakeInstruction("00400010", ("00400030", "00400040"), None)
+    monkeypatch.setattr(
+        instruction,
+        "getDefaultFlows",
+        lambda: ("00400030",),
+    )
+    monkeypatch.setattr(
+        FakeListing,
+        "getInstructions",
+        lambda _self, _body, _forward: [instruction],
+    )
+    registry = ToolRegistry()
+    analysis.register_analysis_tools(registry, FakeWorkspace())
+    tool = {item.name: item.handler for item in registry.enabled_tools()}["control_flow_graph"]
+
+    graph = tool("program-1", "00400010")
+
+    assert graph["edges"] == [
+        {
+            "from": "00400010",
+            "to": "00400030",
+            "kind": "direct_flow",
+            "provenance": "instruction_default_flow",
+            "confidence": "high",
+        },
+        {
+            "from": "00400010",
+            "to": "00400040",
+            "kind": "inferred_flow",
+            "provenance": "ghidra_non_default_flow",
+            "confidence": "inferred",
+        },
+    ]
