@@ -87,6 +87,28 @@ install_zig() {
   log "zig: $(zig version)"
 }
 
+install_docker() {
+  # 推荐容器化部署：环境需具备 Docker 以构建镜像并运行容器集成测试。
+  # 嵌套 pod 无法 overlay-on-overlay，改用经典 graphdriver + fuse-overlayfs。
+  if command -v docker >/dev/null 2>&1 && [ -f /etc/docker/daemon.json ]; then
+    log "docker 已安装: $(docker --version)"
+  else
+    log "安装 Docker 与 fuse-overlayfs"
+    sudo apt-get update -qq
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+      -o Dpkg::Options::=--force-confold \
+      docker.io docker-buildx fuse-overlayfs
+    sudo mkdir -p /etc/docker
+    printf '%s\n' '{"features":{"containerd-snapshotter":false},"storage-driver":"fuse-overlayfs"}' \
+      | sudo tee /etc/docker/daemon.json >/dev/null
+    log "docker: $(docker --version)"
+  fi
+  # 让运行用户免 sudo 使用 docker（新登录 shell 生效）。
+  if ! id -nG "${USER:-$(id -un)}" 2>/dev/null | tr ' ' '\n' | grep -qx docker; then
+    sudo usermod -aG docker "${USER:-$(id -un)}" || true
+  fi
+}
+
 sync_python() {
   log "同步 Python 依赖 (uv sync --locked --extra dev)"
   uv sync --locked --extra dev
@@ -110,6 +132,7 @@ require_java
 install_uv
 install_ghidra
 install_zig
+install_docker
 sync_python
 write_dotenv
 log "开发环境准备完成"
