@@ -1,0 +1,5 @@
+{
+  "name": "ghidra-mcp dev",
+  "user": "ubuntu",
+  "install": "bash .cursor/install.sh"
+}
