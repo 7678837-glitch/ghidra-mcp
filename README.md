@@ -14,7 +14,7 @@ This service is intended for controlled headless analysis, not as a multi-tenant
 
 ## Container image
 
-The repository contains a GitHub Actions workflow that builds `linux/amd64` with `--no-cache` after every push to `main`, publishes versioned and `latest` tags to GHCR, pulls the published digest, and verifies `/health` against the source version and commit.
+The repository contains a GitHub Actions workflow that builds `linux/amd64` with `--no-cache` when a release tag `v<VERSION>` (matching the root `VERSION` file) is pushed, publishes versioned and `latest` tags to GHCR, pulls the published digest, and verifies `/health` against the source version and commit.
 
 Once the GHCR package has been published and its visibility is set to public, pull it without authentication:
 

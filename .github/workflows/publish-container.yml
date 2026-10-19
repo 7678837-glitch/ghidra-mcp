@@ -2,10 +2,10 @@ name: Publish container
 
 on:
   push:
-    branches: [main]
+    tags: ["v[0-9]*"]
 
 concurrency:
-  group: publish-container-${{ github.ref }}
+  group: publish-container
   cancel-in-progress: false
 
 permissions:
@@ -21,6 +21,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
 
       - name: Read and validate version
         id: version
@@ -28,7 +30,23 @@ jobs:
         run: |
           VERSION="$(tr -d '\r\n' < VERSION)"
           [[ "$VERSION" =~ ^[0-9]{8}\.[1-9][0-9]*$ ]]
+          if [[ "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match VERSION file (expected v$VERSION)" >&2
+            exit 1
+          fi
           echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Require the tagged commit to be on main
+        shell: bash
+        run: |
+          if ! git rev-parse --verify --quiet "refs/remotes/origin/main^{commit}" >/dev/null; then
+            echo "origin/main is not available in the checkout; cannot verify the tag" >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
+            echo "Tag $GITHUB_REF_NAME points to $GITHUB_SHA, which is not on main" >&2
+            exit 1
+          fi
 
       - name: Test source and prepare smoke fixture
         id: source

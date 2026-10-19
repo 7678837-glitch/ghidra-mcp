@@ -37,10 +37,13 @@ def test_container_context_excludes_repository_and_local_secrets() -> None:
     assert "tests/fixtures/generated" in ignored
 
 
-def test_main_push_publishes_pinned_linux_amd64_image_to_ghcr() -> None:
+def test_release_tag_publishes_pinned_linux_amd64_image_to_ghcr() -> None:
     workflow = (ROOT / ".github/workflows/publish-container.yml").read_text(encoding="utf-8")
 
-    assert "branches: [main]" in workflow
+    assert 'tags: ["v[0-9]*"]' in workflow
+    assert "branches:" not in workflow
+    assert "pull_request" not in workflow
+    assert '"$GITHUB_REF_NAME" != "v$VERSION"' in workflow
     assert "workflow_dispatch" not in workflow
     assert "packages: write" in workflow
     assert "ghcr.io/${{ github.repository }}" in workflow
@@ -72,3 +75,21 @@ def test_main_push_publishes_pinned_linux_amd64_image_to_ghcr() -> None:
     assert "@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f" in workflow
     assert "@c94ce9fb468520275223c153574b00df6fe4bcc9" in workflow
     assert "@10e90e3645eae34f1e60eeb005ba3a3d33f178e8" in workflow
+
+
+def test_pull_request_ci_runs_tests_and_lint_without_secrets() -> None:
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+    assert "pull_request:" in workflow
+    assert "pull_request_target" not in workflow
+    assert "branches: [main]" in workflow
+    assert "contents: read" in workflow
+    assert "write" not in workflow
+    assert "secrets." not in workflow
+    assert "persist-credentials: false" in workflow
+    assert '["3.11", "3.12", "3.13"]' in workflow
+    assert "uv==0.8.0" in workflow
+    assert "uv sync --locked --extra dev" in workflow
+    assert "pytest -m 'not integration'" in workflow
+    assert "ruff check ." in workflow
+    assert "@11d5960a326750d5838078e36cf38b85af677262" in workflow
