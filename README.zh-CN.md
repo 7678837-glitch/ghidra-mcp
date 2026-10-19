@@ -60,7 +60,7 @@ docker buildx build \
 
 ## 本地 stdio
 
-前置条件：Python 3.11+、Ghidra 12.1.2+、`uv` 和可写的项目目录。
+前置条件：Python 3.11–3.13、Ghidra 12.1.2+、`uv` 和可写的项目目录。
 
 ```bash
 uv sync --locked

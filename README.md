@@ -60,7 +60,7 @@ docker buildx build \
 
 ## Local stdio
 
-Requirements: Python 3.11+, Ghidra 12.1.2+, `uv`, and a writable project directory.
+Requirements: Python 3.11–3.13, Ghidra 12.1.2+, `uv`, and a writable project directory.
 
 ```bash
 uv sync --locked

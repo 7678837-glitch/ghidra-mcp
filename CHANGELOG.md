@@ -5,6 +5,8 @@
 - Security: upgraded `mcp` 1.28.1 → 1.30.0 to fix GHSA-84m7-p3x7-pcfv / CVE-2026-59951 (stateful Streamable HTTP sessions were never reclaimed, allowing unbounded memory growth), and raised the minimum supported `mcp` to 1.30.
 - Security: upgraded the transitive dependencies `pyjwt` 2.13.0 → 2.15.1 and `cryptography` 49.0.0 → 50.0.2 to clear published advisories.
 - Explicitly set `AuthSettings.validate_token_resource=False` for the static Bearer token verifier; behavior is unchanged and the new `mcp` deprecation warning is silenced.
+- Behavior change from the `mcp` 1.30 defaults in Streamable HTTP mode: request bodies larger than 4 MiB are rejected with HTTP 413, stateful sessions with no request in flight for 30 minutes are closed (an open GET stream keeps a session alive; requests to an expired session get HTTP 404 and the client must initialize again), and at most 10,000 sessions are kept at once (new sessions beyond that get HTTP 503). ghidra-mcp does not override these defaults.
+- Capped `requires-python` at `<3.14` because `pyghidra` 3.1.0 pins `JPype1==1.5.2`, which publishes no CPython 3.14 wheels; supported versions are Python 3.11–3.13, and `.python-version` pins local development to 3.12.
 
 ## 20260722.6
 
