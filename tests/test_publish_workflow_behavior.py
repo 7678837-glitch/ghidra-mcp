@@ -148,7 +148,7 @@ def registry() -> Iterator[Registry]:
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     state.url = f"http://127.0.0.1:{server.server_port}"
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(target=server.serve_forever, args=(0.05,), daemon=True)
     thread.start()
     try:
         yield state
@@ -258,6 +258,15 @@ def test_version_check_fails_closed(
 
     assert result.returncode != 0
     assert message in result.stderr, result.stderr
+
+
+def test_version_check_does_not_retry_client_errors(registry: Registry, tmp_path: Path) -> None:
+    registry.page(FIRST_PAGE, ["20261019.1"], f"{TAGS_PATH}?last=missing&n=1000")
+
+    result = _version_check(registry, "20991231.1", tmp_path)
+
+    assert result.returncode != 0
+    assert registry.requests.count(f"{TAGS_PATH}?last=missing&n=1000") == 1
 
 
 def test_version_check_caps_the_number_of_pages(registry: Registry, tmp_path: Path) -> None:
@@ -414,6 +423,15 @@ def test_release_test_job_really_runs_the_container_e2e_test() -> None:
     )
     assert commands[pytest_line - 1].startswith('GHIDRA_MCP_CONTAINER_TOKEN="$TOKEN"')
     assert any(line.startswith("ghidra-mcp-release-test:local") for line in commands)
+
+
+def test_release_steps_cannot_ignore_failures() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "continue-on-error" not in workflow
+    for steps in _jobs().values():
+        for step in steps:
+            assert "if: always()" not in step.text or step.name.startswith("Remove "), step.name
 
 
 def test_release_jobs_have_timeouts() -> None:
