@@ -20,6 +20,7 @@ jobs:
   test:
     name: Gate and test release
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
     outputs:
@@ -117,6 +118,7 @@ jobs:
     name: Publish image
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -142,6 +144,115 @@ jobs:
           [[ "$TESTED_SCHEMA" =~ ^[0-9a-f]{16}$ ]]
           echo "value=$VERSION" >> "$GITHUB_OUTPUT"
           echo "schema=$TESTED_SCHEMA" >> "$GITHUB_OUTPUT"
+
+      # Runs before registry login and before anything is built or pushed, so an
+      # outdated VERSION never produces a sha- candidate tag. It stays in this job
+      # (not in `test`) so that "Re-run failed jobs" repeats it.
+      - name: Require a version newer than every published version
+        shell: python3 {0}
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          REGISTRY_URL: https://ghcr.io
+        run: |
+          import json
+          import os
+          import re
+          import sys
+          import time
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+          from typing import NoReturn
+
+          MAX_PAGES = 50
+          PATTERN = re.compile(r"^([0-9]{8})\.([1-9][0-9]*)$")
+
+
+          def fail(message: str) -> NoReturn:
+              sys.exit(f"Version check failed: {message}")
+
+
+          def fetch(url: str, headers: dict[str, str]) -> tuple[bytes, list[str]]:
+              for attempt in range(1, 6):
+                  try:
+                      request = urllib.request.Request(url, headers=headers)
+                      with urllib.request.urlopen(request, timeout=30) as response:
+                          return response.read(), response.headers.get_all("Link") or []
+                  except urllib.error.HTTPError as error:
+                      retryable = error.code == 429 or error.code >= 500
+                      if not retryable or attempt == 5:
+                          fail(f"GET {url} returned HTTP {error.code}")
+                  except (urllib.error.URLError, TimeoutError) as error:
+                      if attempt == 5:
+                          fail(f"GET {url} failed: {error}")
+                  time.sleep(2 * attempt)
+              raise AssertionError("unreachable")
+
+
+          def key(version: str) -> tuple[int, int]:
+              match = PATTERN.match(version)
+              if match is None:
+                  fail(f"{version!r} is not a YYYYMMDD.N version")
+              return int(match.group(1)), int(match.group(2))
+
+
+          candidate = os.environ["VERSION"]
+          registry = os.environ["REGISTRY_URL"].rstrip("/")
+          image = os.environ["IMAGE_NAME"]
+          if not image.startswith("ghcr.io/"):
+              fail(f"unexpected image name {image!r}")
+          repository = image.removeprefix("ghcr.io/")
+          key(candidate)
+
+          body, _ = fetch(
+              f"{registry}/token?service=ghcr.io&scope=repository:{repository}:pull", {}
+          )
+          try:
+              token = json.loads(body)["token"]
+          except (ValueError, KeyError, TypeError):
+              fail("registry token response has no token")
+          if not isinstance(token, str) or not token:
+              fail("registry token is empty")
+
+          tags_root = f"{registry}/v2/{repository}/tags/list"
+          next_url: str | None = f"{tags_root}?n=1000"
+          visited: set[str] = set()
+          tags: list[str] = []
+          while next_url is not None:
+              if next_url in visited:
+                  fail(f"pagination loops back to {next_url}")
+              if len(visited) >= MAX_PAGES:
+                  fail(f"more than {MAX_PAGES} tag pages")
+              visited.add(next_url)
+              body, links = fetch(next_url, {"Authorization": f"Bearer {token}"})
+              try:
+                  page = json.loads(body)
+              except ValueError:
+                  fail(f"tag page {next_url} is not JSON")
+              page_tags = page.get("tags") if isinstance(page, dict) else None
+              if not isinstance(page_tags, list) or not all(
+                  isinstance(tag, str) for tag in page_tags
+              ):
+                  fail(f"tag page {next_url} has no list of tags")
+              tags.extend(page_tags)
+              current, next_url = next_url, None
+              for link in links:
+                  match = re.search(r'<([^>]+)>\s*;\s*rel="?next"?', link)
+                  if match:
+                      next_url = urllib.parse.urljoin(current, match.group(1))
+                      if not next_url.startswith(f"{tags_root}?"):
+                          fail(f"unexpected pagination link {next_url}")
+
+          published = [tag for tag in tags if PATTERN.match(tag)]
+          if not published:
+              fail("no published version tags found in the registry")
+          newest = max(published, key=key)
+          if key(candidate) <= key(newest):
+              fail(f"VERSION {candidate} is not newer than published version {newest}")
+          print(
+              f"VERSION {candidate} is newer than published version {newest} "
+              f"({len(tags)} tags, {len(visited)} pages)"
+          )
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
@@ -212,51 +323,6 @@ jobs:
             docker logs ghidra-mcp-ci
             exit 1
           fi
-
-      - name: Require a version newer than every published version
-        shell: bash
-        env:
-          VERSION: ${{ steps.version.outputs.value }}
-        run: |
-          REPOSITORY="${IMAGE_NAME#ghcr.io/}"
-          TAGS_FILE="$RUNNER_TEMP/published-tags.txt"
-          HEADERS_FILE="$RUNNER_TEMP/published-tags-headers.txt"
-          REGISTRY_TOKEN="$(curl -fsS --retry 5 --retry-all-errors \
-            "https://ghcr.io/token?service=ghcr.io&scope=repository:${REPOSITORY}:pull" \
-            | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
-          : > "$TAGS_FILE"
-          NEXT="/v2/${REPOSITORY}/tags/list?n=1000"
-          while [ -n "$NEXT" ]; do
-            curl -fsS --retry 5 --retry-all-errors -D "$HEADERS_FILE" \
-              -H "Authorization: Bearer ${REGISTRY_TOKEN}" "https://ghcr.io${NEXT}" \
-              | python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin).get("tags") or []))' \
-              >> "$TAGS_FILE"
-            NEXT="$(tr -d '\r' < "$HEADERS_FILE" \
-              | sed -nE 's/^[Ll]ink: *<([^>]+)>.*rel="?next"?.*/\1/p')"
-          done
-          python3 - "$VERSION" "$TAGS_FILE" <<'PY'
-          import re
-          import sys
-
-          pattern = re.compile(r"^([0-9]{8})\.([1-9][0-9]*)$")
-          candidate = sys.argv[1]
-          with open(sys.argv[2], encoding="utf-8") as handle:
-              published = [tag for tag in handle.read().split() if pattern.match(tag)]
-          if not published:
-              sys.exit("No published version tags found in the registry; refusing to promote")
-
-
-          def key(version: str) -> tuple[int, int]:
-              match = pattern.match(version)
-              assert match is not None
-              return int(match.group(1)), int(match.group(2))
-
-
-          newest = max(published, key=key)
-          if key(candidate) <= key(newest):
-              sys.exit(f"VERSION {candidate} is not newer than published version {newest}")
-          print(f"VERSION {candidate} is newer than published version {newest}")
-          PY
 
       - name: Promote verified digest
         shell: bash

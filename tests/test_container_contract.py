@@ -116,7 +116,8 @@ def test_uv_is_pinned_by_version_and_hash() -> None:
 
     match = re.fullmatch(r"uv==(\d+)\.(\d+)\.(\d+) \\", entries[0])
     assert match is not None
-    assert tuple(int(part) for part in match.groups()) >= (0, 11, 15)
+    # 0.13.1 is the pinned release; older 0.12.x/0.11.x releases carry advisories.
+    assert tuple(int(part) for part in match.groups()) >= (0, 13, 1)
     hashes = entries[1:]
     assert len(hashes) >= 2
     for index, line in enumerate(hashes):
@@ -150,17 +151,5 @@ def test_publish_workflow_is_serialized_and_gated_before_registry_login() -> Non
     assert "      contents: read\n      packages: write\n" in publish_job
     assert "Log in to GHCR" in publish_job
     assert "needs.test.outputs.version" in publish_job
-    for third_party in ("pytest", "uv ", "uv\n", ".ci-venv", "pip install"):
-        assert third_party not in publish_job
-
-
-def test_publish_promotes_only_versions_newer_than_every_published_tag() -> None:
-    _, publish_job = _publish_jobs()
-
-    check = publish_job.index("Require a version newer than every published version")
-    assert publish_job.index("Verify the candidate digest") < check
-    assert check < publish_job.index("Promote verified digest")
-    assert "/tags/list?n=1000" in publish_job
-    assert 'rel="?next"?' in publish_job
-    assert "if key(candidate) <= key(newest):" in publish_job
-    assert "No published version tags found in the registry" in publish_job
+    # Step-level checks (no third-party code, version check placement and
+    # behavior) live in tests/test_publish_workflow_behavior.py.
