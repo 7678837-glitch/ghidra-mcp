@@ -8,21 +8,29 @@ concurrency:
   group: publish-container
   cancel-in-progress: false
 
-permissions:
-  contents: read
-  packages: write
+# No workflow-level permissions: each job declares only what it needs.
+permissions: {}
 
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 jobs:
-  publish:
+  # Runs every gate and all third-party code (uv, dev dependencies, pytest)
+  # with a read-only token and no registry credentials.
+  test:
+    name: Gate and test release
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+      schema: ${{ steps.source.outputs.schema }}
     steps:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Read and validate version
         id: version
@@ -62,6 +70,78 @@ jobs:
           echo "schema=$EXPECTED_SCHEMA" >> "$GITHUB_OUTPUT"
           mkdir .ci-fixtures
           cc -shared -fPIC -g -o .ci-fixtures/libsymbolic.so tests/fixtures/src/symbolic.c
+
+      - name: Build local test image
+        shell: bash
+        run: |
+          docker build --platform linux/amd64 \
+            --build-arg "GIT_COMMIT=${GITHUB_SHA}" \
+            --build-arg "VERSION=${{ steps.version.outputs.value }}" \
+            --tag ghidra-mcp-release-test:local .
+
+      - name: Run container MCP end-to-end test
+        shell: bash
+        run: |
+          TOKEN="$(openssl rand -hex 32)"
+          docker run -d --name ghidra-mcp-release-test --network host \
+            -e GHIDRA_MCP_PUBLIC_URL=http://127.0.0.1:8765 \
+            -e GHIDRA_MCP_AUTH_TOKEN="$TOKEN" \
+            -v "${GITHUB_WORKSPACE}/.ci-fixtures:/data/input:ro" \
+            ghidra-mcp-release-test:local
+          HEALTH=""
+          for _ in $(seq 1 30); do
+            HEALTH="$(curl -fsS http://127.0.0.1:8765/health || true)"
+            if [ -n "$HEALTH" ]; then
+              python3 -c 'import json,sys; data=json.loads(sys.argv[4]); assert data == {"status": "ok", "version": sys.argv[1], "git_commit": sys.argv[2], "schema_version": sys.argv[3]}' \
+                "${{ steps.version.outputs.value }}" "${{ github.sha }}" \
+                "${{ steps.source.outputs.schema }}" "$HEALTH"
+              break
+            fi
+            sleep 2
+          done
+          if [ -z "$HEALTH" ]; then
+            docker logs ghidra-mcp-release-test
+            exit 1
+          fi
+          GHIDRA_MCP_CONTAINER_URL=http://127.0.0.1:8765/mcp \
+            GHIDRA_MCP_CONTAINER_TOKEN="$TOKEN" \
+            .ci-venv/bin/uv run pytest tests/integration/test_container_mcp.py
+
+      - name: Remove test container
+        if: always()
+        run: docker rm -f ghidra-mcp-release-test 2>/dev/null || true
+
+  # Only this job can write packages. It runs no project or third-party Python
+  # code: only the pinned Docker actions, docker/curl and stdlib python3.
+  publish:
+    name: Publish image
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Re-read version and test outputs
+        id: version
+        shell: bash
+        env:
+          TESTED_VERSION: ${{ needs.test.outputs.version }}
+          TESTED_SCHEMA: ${{ needs.test.outputs.schema }}
+        run: |
+          VERSION="$(tr -d '\r\n' < VERSION)"
+          [[ "$VERSION" =~ ^[0-9]{8}\.[1-9][0-9]*$ ]]
+          if [[ "$GITHUB_REF_NAME" != "v$VERSION" || "$VERSION" != "$TESTED_VERSION" ]]; then
+            echo "VERSION $VERSION does not match tag $GITHUB_REF_NAME or tested version $TESTED_VERSION" >&2
+            exit 1
+          fi
+          [[ "$TESTED_SCHEMA" =~ ^[0-9a-f]{16}$ ]]
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "schema=$TESTED_SCHEMA" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
@@ -116,15 +196,14 @@ jobs:
           docker run -d --name ghidra-mcp-ci --network host \
             -e GHIDRA_MCP_PUBLIC_URL=http://127.0.0.1:8765 \
             -e GHIDRA_MCP_AUTH_TOKEN="$TOKEN" \
-            -v "${GITHUB_WORKSPACE}/.ci-fixtures:/data/input:ro" \
             "${IMAGE_NAME}@${{ steps.image.outputs.digest }}"
           HEALTH=""
-          for attempt in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             HEALTH="$(curl -fsS http://127.0.0.1:8765/health || true)"
             if [ -n "$HEALTH" ]; then
               python3 -c 'import json,sys; data=json.loads(sys.argv[4]); assert data == {"status": "ok", "version": sys.argv[1], "git_commit": sys.argv[2], "schema_version": sys.argv[3]}' \
                 "${{ steps.version.outputs.value }}" "${{ github.sha }}" \
-                "${{ steps.source.outputs.schema }}" "$HEALTH"
+                "${{ steps.version.outputs.schema }}" "$HEALTH"
               break
             fi
             sleep 2
@@ -133,9 +212,6 @@ jobs:
             docker logs ghidra-mcp-ci
             exit 1
           fi
-          GHIDRA_MCP_CONTAINER_URL=http://127.0.0.1:8765/mcp \
-            GHIDRA_MCP_CONTAINER_TOKEN="$TOKEN" \
-            .ci-venv/bin/uv run pytest tests/integration/test_container_mcp.py
 
       - name: Promote verified digest
         shell: bash

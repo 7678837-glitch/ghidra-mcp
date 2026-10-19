@@ -7,6 +7,14 @@ UV_REQUIREMENTS = "tools/uv-requirements.txt"
 UV_HASHED_INSTALL = f"--require-hashes -r {UV_REQUIREMENTS}"
 
 
+def _publish_jobs() -> tuple[str, str]:
+    workflow = (ROOT / ".github/workflows/publish-container.yml").read_text(encoding="utf-8")
+    head, jobs = workflow.split("\njobs:\n", 1)
+    test_job, publish_job = jobs.split("\n  publish:\n", 1)
+    assert "\n  test:\n" in test_job
+    return test_job, publish_job
+
+
 def test_container_is_pinned_multi_stage_non_root_and_health_checked() -> None:
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
@@ -115,3 +123,32 @@ def test_uv_is_pinned_by_version_and_hash() -> None:
         suffix = "" if index == len(hashes) - 1 else " \\"
         assert re.fullmatch(r"    --hash=sha256:[0-9a-f]{64}" + re.escape(suffix), line), line
     assert len(set(hashes)) == len(hashes)
+
+
+def test_publish_workflow_is_serialized_and_gated_before_registry_login() -> None:
+    workflow = (ROOT / ".github/workflows/publish-container.yml").read_text(encoding="utf-8")
+    test_job, publish_job = _publish_jobs()
+
+    assert "concurrency:\n  group: publish-container\n  cancel-in-progress: false\n" in workflow
+    assert "\npermissions: {}\n" in workflow
+    assert workflow.count("persist-credentials: false") == workflow.count("actions/checkout@")
+
+    assert "fetch-depth: 0" in test_job
+    assert '"$GITHUB_REF_NAME" != "v$VERSION"' in test_job
+    assert 'git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main' in test_job
+    assert test_job.index("git merge-base --is-ancestor") < test_job.index(UV_HASHED_INSTALL)
+    assert "Log in to GHCR" not in test_job
+    assert "secrets." not in test_job
+    assert "packages:" not in test_job
+    assert "    permissions:\n      contents: read\n    outputs:" in test_job
+    assert "pytest -m 'not integration'" in test_job
+    assert "ruff check ." in test_job
+    assert "tests/integration/test_container_mcp.py" in test_job
+    assert "if: always()" in test_job
+
+    assert "    needs: test\n" in publish_job
+    assert "      contents: read\n      packages: write\n" in publish_job
+    assert "Log in to GHCR" in publish_job
+    assert "needs.test.outputs.version" in publish_job
+    for third_party in ("pytest", "uv ", "uv\n", ".ci-venv", "pip install"):
+        assert third_party not in publish_job
