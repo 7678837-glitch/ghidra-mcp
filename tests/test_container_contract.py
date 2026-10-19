@@ -37,10 +37,13 @@ def test_container_context_excludes_repository_and_local_secrets() -> None:
     assert "tests/fixtures/generated" in ignored
 
 
-def test_main_push_publishes_pinned_linux_amd64_image_to_ghcr() -> None:
+def test_release_tag_publishes_pinned_linux_amd64_image_to_ghcr() -> None:
     workflow = (ROOT / ".github/workflows/publish-container.yml").read_text(encoding="utf-8")
 
-    assert "branches: [main]" in workflow
+    assert 'tags: ["v[0-9]*"]' in workflow
+    assert "branches:" not in workflow
+    assert "pull_request" not in workflow
+    assert '"$GITHUB_REF_NAME" != "v$VERSION"' in workflow
     assert "workflow_dispatch" not in workflow
     assert "packages: write" in workflow
     assert "ghcr.io/${{ github.repository }}" in workflow

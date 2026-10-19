@@ -14,7 +14,7 @@
 
 ## 容器镜像
 
-仓库包含 GitHub Actions 发布流程：每次推送 `main` 后，以 `linux/amd64`、`--no-cache` 构建镜像，向 GHCR 推送版本标签和 `latest`，再按远端 digest 拉回，并核验 `/health` 中的版本与 Git commit。
+仓库包含 GitHub Actions 发布流程：推送与根目录 `VERSION` 文件一致的发版 tag `v<VERSION>` 时，以 `linux/amd64`、`--no-cache` 构建镜像，向 GHCR 推送版本标签和 `latest`，再按远端 digest 拉回，并核验 `/health` 中的版本与 Git commit。
 
 首次发布并把 GHCR package 可见性设为 public 后，可匿名拉取：
 
