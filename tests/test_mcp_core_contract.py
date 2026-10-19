@@ -157,6 +157,7 @@ def test_http_health_is_public_and_mcp_requires_the_configured_bearer_token() ->
         "schema_version": health.json()["schema_version"],
     }
     assert len(health.json()["schema_version"]) == 16
+    assert app.settings.auth.validate_token_resource is False
     assert missing.status_code == 401
     assert wrong.status_code == 401
     assert accepted.status_code != 401
