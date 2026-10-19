@@ -171,7 +171,7 @@ time.sleep = _record_sleep
 
 
 def _version_check(
-    registry: Registry, version: str, tmp_path: Path
+    registry: Registry, version: str, tmp_path: Path, image: str = f"ghcr.io/{REPOSITORY}"
 ) -> subprocess.CompletedProcess[str]:
     step = _step("publish", VERSION_CHECK)
     assert step.shell == "python3 {0}" and step.run is not None
@@ -188,7 +188,7 @@ def _version_check(
         "SLEEP_LOG": str(tmp_path / "sleeps.log"),
         "VERSION": version,
         "REGISTRY_URL": registry.url,
-        "IMAGE_NAME": f"ghcr.io/{REPOSITORY}",
+        "IMAGE_NAME": image,
     }
     return subprocess.run(
         [sys.executable, str(script)], env=env, capture_output=True, text=True, timeout=60
@@ -265,6 +265,17 @@ def test_version_check_follows_every_page(registry: Registry, tmp_path: Path) ->
             {FIRST_PAGE: (["20261019.1"], "https://evil.example/v2/x/tags/list?n=1")},
             "unexpected pagination link",
         ),
+        (
+            {
+                FIRST_PAGE: (["20261019.1"], "/v2/other/repo/tags/list?n=1000"),
+                "/v2/other/repo/tags/list?n=1000": (["20991231.9"], None),
+            },
+            "unexpected pagination link",
+        ),
+        (
+            {FIRST_PAGE: (["20261019.1"], f"{TAGS_PATH}/../../other/tags/list?n=1000")},
+            "unexpected pagination link",
+        ),
         ({FIRST_PAGE: (["20261019.1"], f"{TAGS_PATH}?last=missing&n=1000")}, "returned HTTP 404"),
     ],
 )
@@ -320,6 +331,29 @@ def test_version_check_fails_without_a_registry_token(
 
     assert result.returncode != 0
     assert message in result.stderr
+
+
+@pytest.mark.parametrize(
+    "image", ["docker.io/7678837-glitch/ghidra-mcp", "ghcr.io.evil.example/x", "", "ghcr.io"]
+)
+def test_version_check_rejects_an_image_outside_ghcr(
+    registry: Registry, tmp_path: Path, image: str
+) -> None:
+    registry.page(FIRST_PAGE, ["20261019.1"])
+
+    result = _version_check(registry, "20991231.1", tmp_path, image=image)
+
+    assert result.returncode != 0
+    assert "unexpected image name" in result.stderr
+    assert registry.requests == []
+
+
+def test_version_check_reads_inputs_only_from_the_environment() -> None:
+    # Expressions interpolated into the script body would be code injection;
+    # every input must arrive through env.
+    step = _step("publish", VERSION_CHECK)
+    assert step.run is not None and "${{" not in step.run
+    assert set(step.raw["env"]) == {"VERSION", "REGISTRY_URL"}
 
 
 def test_version_check_rejects_a_malformed_candidate(registry: Registry, tmp_path: Path) -> None:

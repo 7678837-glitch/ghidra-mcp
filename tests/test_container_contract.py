@@ -1,7 +1,10 @@
 import importlib.util
 import re
+import subprocess
 from pathlib import Path
 from types import ModuleType
+
+import pytest
 
 
 ROOT = Path(__file__).parents[1]
@@ -222,6 +225,42 @@ def test_apt_pin_check_reads_the_runtime_stage_of_the_dockerfile() -> None:
     assert set(pins) == RUNTIME_PINS
     for name, version in pins.items():
         assert f"{name}={version}" in _apt_installs_by_stage()["runtime"]
+
+
+def test_apt_pin_check_only_simulates_the_install_in_the_pinned_base(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    script = _apt_pin_script()
+    base, pins = script.runtime_pins((ROOT / "Dockerfile").read_text(encoding="utf-8"))
+    calls: list[list[str]] = []
+    installed = {name: version for name, version in pins.items()}
+
+    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        stdout = "".join(
+            f"Inst {name} ({version} Ubuntu:24.04/noble-updates [amd64])\n"
+            for name, version in installed.items()
+        )
+        return subprocess.CompletedProcess(argv, 0, stdout, "")
+
+    monkeypatch.setattr(script.subprocess, "run", fake_run)
+    script.main()
+    assert "all 3 runtime pins are installable" in capsys.readouterr().out
+
+    [argv] = calls
+    assert argv[:4] == ["docker", "run", "--rm", "--pull=missing"]
+    assert argv[4] == base
+    assert argv[5:7] == ["sh", "-ec"]
+    assert re.fullmatch(
+        r"apt-get update -qq && apt-get install -y --dry-run --no-install-recommends \"\$@\"",
+        argv[7],
+    )
+    assert argv[9:] == [f"{name}={version}" for name, version in pins.items()]
+
+    # A different resolved version (apt would install something else) is a failure.
+    installed["python3.12"] = "3.12.3-1ubuntu0.99"
+    with pytest.raises(SystemExit, match="would not install these exact versions"):
+        script.main()
 
 
 def test_apt_pin_check_workflow_is_scheduled_and_read_only() -> None:
