@@ -1,7 +1,10 @@
+import re
 from pathlib import Path
 
 
 ROOT = Path(__file__).parents[1]
+UV_REQUIREMENTS = "tools/uv-requirements.txt"
+UV_HASHED_INSTALL = f"--require-hashes -r {UV_REQUIREMENTS}"
 
 
 def test_container_is_pinned_multi_stage_non_root_and_health_checked() -> None:
@@ -25,6 +28,9 @@ def test_container_is_pinned_multi_stage_non_root_and_health_checked() -> None:
     assert "VOLUME" in dockerfile and "/data/projects" in dockerfile
     assert "COPY --from=" in dockerfile
     assert "COPY LICENSE NOTICE /app/" in dockerfile
+    assert f"COPY {UV_REQUIREMENTS} ./{UV_REQUIREMENTS}" in dockerfile
+    assert UV_HASHED_INSTALL in dockerfile
+    assert "uv==" not in dockerfile
 
 
 def test_container_context_excludes_repository_and_local_secrets() -> None:
@@ -88,8 +94,24 @@ def test_pull_request_ci_runs_tests_and_lint_without_secrets() -> None:
     assert "secrets." not in workflow
     assert "persist-credentials: false" in workflow
     assert '["3.11", "3.12", "3.13"]' in workflow
-    assert "uv==0.8.0" in workflow
+    assert UV_HASHED_INSTALL in workflow
+    assert "uv==" not in workflow
     assert "uv sync --locked --extra dev" in workflow
     assert "pytest -m 'not integration'" in workflow
     assert "ruff check ." in workflow
     assert "@11d5960a326750d5838078e36cf38b85af677262" in workflow
+
+
+def test_uv_is_pinned_by_version_and_hash() -> None:
+    lines = (ROOT / UV_REQUIREMENTS).read_text(encoding="utf-8").splitlines()
+    entries = [line for line in lines if line and not line.startswith("#")]
+
+    match = re.fullmatch(r"uv==(\d+)\.(\d+)\.(\d+) \\", entries[0])
+    assert match is not None
+    assert tuple(int(part) for part in match.groups()) >= (0, 11, 15)
+    hashes = entries[1:]
+    assert len(hashes) >= 2
+    for index, line in enumerate(hashes):
+        suffix = "" if index == len(hashes) - 1 else " \\"
+        assert re.fullmatch(r"    --hash=sha256:[0-9a-f]{64}" + re.escape(suffix), line), line
+    assert len(set(hashes)) == len(hashes)

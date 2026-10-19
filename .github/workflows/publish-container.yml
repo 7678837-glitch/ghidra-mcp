@@ -53,7 +53,7 @@ jobs:
         shell: bash
         run: |
           python3 -m venv .ci-venv
-          .ci-venv/bin/pip install uv==0.8.0
+          .ci-venv/bin/pip install --require-hashes -r tools/uv-requirements.txt
           .ci-venv/bin/uv sync --locked --extra dev
           .ci-venv/bin/uv run pytest -m 'not integration'
           .ci-venv/bin/uv run ruff check .

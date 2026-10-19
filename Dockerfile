@@ -28,8 +28,9 @@ RUN apt-get update \
     && python3 -m venv /opt/build-venv
 ENV PATH=/opt/build-venv/bin:$PATH
 COPY pyproject.toml uv.lock README.md VERSION LICENSE NOTICE ./
+COPY tools/uv-requirements.txt ./tools/uv-requirements.txt
 COPY src ./src
-RUN pip install --no-cache-dir --retries 5 --timeout 60 uv==0.8.0 \
+RUN pip install --no-cache-dir --retries 5 --timeout 60 --require-hashes -r tools/uv-requirements.txt \
     && uv export --locked --no-dev --no-emit-project --output-file requirements.txt \
     && uv build --wheel --out-dir /dist \
     && pip wheel --no-cache-dir --retries 5 --timeout 60 --wheel-dir /wheels -r requirements.txt
