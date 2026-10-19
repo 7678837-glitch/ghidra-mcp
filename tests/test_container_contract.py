@@ -153,3 +153,27 @@ def test_publish_workflow_is_serialized_and_gated_before_registry_login() -> Non
     assert "needs.test.outputs.version" in publish_job
     # Step-level checks (no third-party code, version check placement and
     # behavior) live in tests/test_publish_workflow_behavior.py.
+
+
+def test_container_apt_packages_are_pinned_to_exact_versions() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    installs = re.findall(r"apt-get install ([^\n]*?) \\\n", dockerfile)
+
+    assert len(installs) == dockerfile.count("apt-get install") == 3
+    pins: dict[str, str] = {}
+    for install in installs:
+        options, _, packages = install.partition("--no-install-recommends ")
+        assert options == "-y "
+        for package in packages.split():
+            match = re.fullmatch(r"([a-z0-9][a-z0-9.+-]*)=([0-9][A-Za-z0-9.+~:-]*)", package)
+            assert match is not None, package
+            assert pins.setdefault(match.group(1), match.group(2)) == match.group(2), package
+    assert set(pins) == {
+        "ca-certificates",
+        "curl",
+        "unzip",
+        "python3",
+        "python3-venv",
+        "openjdk-21-jre-headless",
+    }
+    assert pins["python3"] == pins["python3-venv"]
