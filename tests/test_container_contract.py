@@ -152,3 +152,15 @@ def test_publish_workflow_is_serialized_and_gated_before_registry_login() -> Non
     assert "needs.test.outputs.version" in publish_job
     for third_party in ("pytest", "uv ", "uv\n", ".ci-venv", "pip install"):
         assert third_party not in publish_job
+
+
+def test_publish_promotes_only_versions_newer_than_every_published_tag() -> None:
+    _, publish_job = _publish_jobs()
+
+    check = publish_job.index("Require a version newer than every published version")
+    assert publish_job.index("Verify the candidate digest") < check
+    assert check < publish_job.index("Promote verified digest")
+    assert "/tags/list?n=1000" in publish_job
+    assert 'rel="?next"?' in publish_job
+    assert "if key(candidate) <= key(newest):" in publish_job
+    assert "No published version tags found in the registry" in publish_job

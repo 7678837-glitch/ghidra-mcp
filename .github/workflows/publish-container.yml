@@ -213,6 +213,51 @@ jobs:
             exit 1
           fi
 
+      - name: Require a version newer than every published version
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          REPOSITORY="${IMAGE_NAME#ghcr.io/}"
+          TAGS_FILE="$RUNNER_TEMP/published-tags.txt"
+          HEADERS_FILE="$RUNNER_TEMP/published-tags-headers.txt"
+          REGISTRY_TOKEN="$(curl -fsS --retry 5 --retry-all-errors \
+            "https://ghcr.io/token?service=ghcr.io&scope=repository:${REPOSITORY}:pull" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
+          : > "$TAGS_FILE"
+          NEXT="/v2/${REPOSITORY}/tags/list?n=1000"
+          while [ -n "$NEXT" ]; do
+            curl -fsS --retry 5 --retry-all-errors -D "$HEADERS_FILE" \
+              -H "Authorization: Bearer ${REGISTRY_TOKEN}" "https://ghcr.io${NEXT}" \
+              | python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin).get("tags") or []))' \
+              >> "$TAGS_FILE"
+            NEXT="$(tr -d '\r' < "$HEADERS_FILE" \
+              | sed -nE 's/^[Ll]ink: *<([^>]+)>.*rel="?next"?.*/\1/p')"
+          done
+          python3 - "$VERSION" "$TAGS_FILE" <<'PY'
+          import re
+          import sys
+
+          pattern = re.compile(r"^([0-9]{8})\.([1-9][0-9]*)$")
+          candidate = sys.argv[1]
+          with open(sys.argv[2], encoding="utf-8") as handle:
+              published = [tag for tag in handle.read().split() if pattern.match(tag)]
+          if not published:
+              sys.exit("No published version tags found in the registry; refusing to promote")
+
+
+          def key(version: str) -> tuple[int, int]:
+              match = pattern.match(version)
+              assert match is not None
+              return int(match.group(1)), int(match.group(2))
+
+
+          newest = max(published, key=key)
+          if key(candidate) <= key(newest):
+              sys.exit(f"VERSION {candidate} is not newer than published version {newest}")
+          print(f"VERSION {candidate} is newer than published version {newest}")
+          PY
+
       - name: Promote verified digest
         shell: bash
         run: |
