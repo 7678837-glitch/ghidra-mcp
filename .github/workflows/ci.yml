@@ -33,7 +33,7 @@ jobs:
         shell: bash
         run: |
           python3 -m venv "$RUNNER_TEMP/uv-venv"
-          "$RUNNER_TEMP/uv-venv/bin/pip" install uv==0.8.0
+          "$RUNNER_TEMP/uv-venv/bin/pip" install --require-hashes -r tools/uv-requirements.txt
           echo "$RUNNER_TEMP/uv-venv/bin" >> "$GITHUB_PATH"
 
       - name: Sync locked environment

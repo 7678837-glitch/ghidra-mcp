@@ -1,7 +1,18 @@
+import re
 from pathlib import Path
 
 
 ROOT = Path(__file__).parents[1]
+UV_REQUIREMENTS = "tools/uv-requirements.txt"
+UV_HASHED_INSTALL = f"--require-hashes -r {UV_REQUIREMENTS}"
+
+
+def _publish_jobs() -> tuple[str, str]:
+    workflow = (ROOT / ".github/workflows/publish-container.yml").read_text(encoding="utf-8")
+    head, jobs = workflow.split("\njobs:\n", 1)
+    test_job, publish_job = jobs.split("\n  publish:\n", 1)
+    assert "\n  test:\n" in test_job
+    return test_job, publish_job
 
 
 def test_container_is_pinned_multi_stage_non_root_and_health_checked() -> None:
@@ -25,6 +36,9 @@ def test_container_is_pinned_multi_stage_non_root_and_health_checked() -> None:
     assert "VOLUME" in dockerfile and "/data/projects" in dockerfile
     assert "COPY --from=" in dockerfile
     assert "COPY LICENSE NOTICE /app/" in dockerfile
+    assert f"COPY {UV_REQUIREMENTS} ./{UV_REQUIREMENTS}" in dockerfile
+    assert UV_HASHED_INSTALL in dockerfile
+    assert "uv==" not in dockerfile
 
 
 def test_container_context_excludes_repository_and_local_secrets() -> None:
@@ -88,8 +102,65 @@ def test_pull_request_ci_runs_tests_and_lint_without_secrets() -> None:
     assert "secrets." not in workflow
     assert "persist-credentials: false" in workflow
     assert '["3.11", "3.12", "3.13"]' in workflow
-    assert "uv==0.8.0" in workflow
+    assert UV_HASHED_INSTALL in workflow
+    assert "uv==" not in workflow
     assert "uv sync --locked --extra dev" in workflow
     assert "pytest -m 'not integration'" in workflow
     assert "ruff check ." in workflow
     assert "@11d5960a326750d5838078e36cf38b85af677262" in workflow
+
+
+def test_uv_is_pinned_by_version_and_hash() -> None:
+    lines = (ROOT / UV_REQUIREMENTS).read_text(encoding="utf-8").splitlines()
+    entries = [line for line in lines if line and not line.startswith("#")]
+
+    match = re.fullmatch(r"uv==(\d+)\.(\d+)\.(\d+) \\", entries[0])
+    assert match is not None
+    assert tuple(int(part) for part in match.groups()) >= (0, 11, 15)
+    hashes = entries[1:]
+    assert len(hashes) >= 2
+    for index, line in enumerate(hashes):
+        suffix = "" if index == len(hashes) - 1 else " \\"
+        assert re.fullmatch(r"    --hash=sha256:[0-9a-f]{64}" + re.escape(suffix), line), line
+    assert len(set(hashes)) == len(hashes)
+
+
+def test_publish_workflow_is_serialized_and_gated_before_registry_login() -> None:
+    workflow = (ROOT / ".github/workflows/publish-container.yml").read_text(encoding="utf-8")
+    test_job, publish_job = _publish_jobs()
+
+    assert "concurrency:\n  group: publish-container\n  cancel-in-progress: false\n" in workflow
+    assert "\npermissions: {}\n" in workflow
+    assert workflow.count("persist-credentials: false") == workflow.count("actions/checkout@")
+
+    assert "fetch-depth: 0" in test_job
+    assert '"$GITHUB_REF_NAME" != "v$VERSION"' in test_job
+    assert 'git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main' in test_job
+    assert test_job.index("git merge-base --is-ancestor") < test_job.index(UV_HASHED_INSTALL)
+    assert "Log in to GHCR" not in test_job
+    assert "secrets." not in test_job
+    assert "packages:" not in test_job
+    assert "    permissions:\n      contents: read\n    outputs:" in test_job
+    assert "pytest -m 'not integration'" in test_job
+    assert "ruff check ." in test_job
+    assert "tests/integration/test_container_mcp.py" in test_job
+    assert "if: always()" in test_job
+
+    assert "    needs: test\n" in publish_job
+    assert "      contents: read\n      packages: write\n" in publish_job
+    assert "Log in to GHCR" in publish_job
+    assert "needs.test.outputs.version" in publish_job
+    for third_party in ("pytest", "uv ", "uv\n", ".ci-venv", "pip install"):
+        assert third_party not in publish_job
+
+
+def test_publish_promotes_only_versions_newer_than_every_published_tag() -> None:
+    _, publish_job = _publish_jobs()
+
+    check = publish_job.index("Require a version newer than every published version")
+    assert publish_job.index("Verify the candidate digest") < check
+    assert check < publish_job.index("Promote verified digest")
+    assert "/tags/list?n=1000" in publish_job
+    assert 'rel="?next"?' in publish_job
+    assert "if key(candidate) <= key(newest):" in publish_job
+    assert "No published version tags found in the registry" in publish_job
