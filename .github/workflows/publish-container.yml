@@ -2,7 +2,7 @@ name: Publish container
 
 on:
   push:
-    branches: [main]
+    tags: ["v[0-9]*"]
 
 concurrency:
   group: publish-container-${{ github.ref }}
@@ -28,6 +28,10 @@ jobs:
         run: |
           VERSION="$(tr -d '\r\n' < VERSION)"
           [[ "$VERSION" =~ ^[0-9]{8}\.[1-9][0-9]*$ ]]
+          if [[ "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match VERSION file (expected v$VERSION)" >&2
+            exit 1
+          fi
           echo "value=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Test source and prepare smoke fixture
