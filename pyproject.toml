@@ -9,7 +9,7 @@ description = "Single-process MCP server for headless Ghidra automation"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 dependencies = [
   "mcp>=1.30,<2",
   "pyghidra>=3.0,<4",
