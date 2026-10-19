@@ -1,5 +1,11 @@
 # Changelog
 
+## 20261019.1
+
+- Security: upgraded `mcp` 1.28.1 → 1.30.0 to fix GHSA-84m7-p3x7-pcfv / CVE-2026-59951 (stateful Streamable HTTP sessions were never reclaimed, allowing unbounded memory growth), and raised the minimum supported `mcp` to 1.30.
+- Security: upgraded the transitive dependencies `pyjwt` 2.13.0 → 2.15.1 and `cryptography` 49.0.0 → 50.0.2 to clear published advisories.
+- Explicitly set `AuthSettings.validate_token_resource=False` for the static Bearer token verifier; behavior is unchanged and the new `mcp` deprecation warning is silenced.
+
 ## 20260722.6
 
 - Moved detailed user documentation to the GitHub Wiki and made the remaining repository documentation English-first.
